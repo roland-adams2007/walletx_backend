@@ -72,4 +72,15 @@ class User extends Authenticatable
     {
         return $this->hasMany(Business::class, 'user_id');
     }
+
+    public function authSessions()
+    {
+        return $this->hasMany(AuthSession::class);
+    }
+
+    public function activeSessions()
+    {
+        return $this->hasMany(AuthSession::class)
+            ->whereNull('revoked_at');
+    }
 }
