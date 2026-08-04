@@ -8,14 +8,13 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use App\Jobs\SendVerificationCodeJob;
 use App\Models\AuthSession;
+use App\Models\EmailToken;
 use App\Models\RefreshToken;
 use Illuminate\Support\Str;
-use Symfony\Component\HttpFoundation\Cookie;
 use Illuminate\Support\Facades\DB;
 
 class AuthController extends Controller
 {
-
     public function login(Request $request)
     {
         $request->merge([
@@ -71,7 +70,7 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
-        $request->validate([
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             "firstname" => "required|string|max:255",
             "lastname" => "required|string|max:255",
             "middlename" => "nullable|string|max:255",
@@ -81,6 +80,13 @@ class AuthController extends Controller
         ], [
             'phone.regex' => 'The phone number must start with +234 and be followed by exactly 10 digits (e.g., +2348012345678)'
         ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first(),
+            ], 200);
+        }
 
         $user = new User([
             "firstname" => $request->firstname,
@@ -116,23 +122,23 @@ class AuthController extends Controller
             "email" => "required|email"
         ]);
 
-        $cachedData = Cache::get('email_verify_' . $request->code);
+        $token = EmailToken::findValid($request->code, 'verify_email');
 
-        if (!$cachedData) {
+        if (!$token) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid or expired verification code. Please request a new one.',
             ], 200);
         }
 
-        if ($cachedData['email'] !== $request->email) {
+        if ($token->email !== $request->email) {
             return response()->json([
                 'success' => false,
-                'message' => 'This verification code belongs to a different email address.'
+                'message' => 'Invalid or expired verification code. Please request a new one.'
             ], 200);
         }
 
-        $user = User::find($cachedData['user_id']);
+        $user = User::find($token->user_id);
 
         if (!$user) {
             return response()->json([
@@ -155,13 +161,12 @@ class AuthController extends Controller
             ], 200);
         }
 
+        $token->markUsed();
         $user->email_verified_at = now();
         $user->save();
 
-        Cache::forget('email_verify_' . $request->code);
-        Cache::forget('email_verify_user_' . $user->id);
-        Cache::forget('email_verify_sent_' . $user->id);
-        Cache::forget('email_verify_sent_' . $user->id . '_expiry');
+        Cache::forget('email_verify_sent_' . $user->email);
+        Cache::forget('email_verify_sent_' . $user->email . '_expiry');
 
         return response()->json([
             'success' => true,
@@ -202,7 +207,6 @@ class AuthController extends Controller
         }
 
         return DB::transaction(function () use ($session, $refreshToken) {
-
             $user = $session->user;
 
             $refreshToken->update([
@@ -211,7 +215,6 @@ class AuthController extends Controller
             ]);
 
             $plainRefreshToken = Str::random(64);
-
             RefreshToken::create([
                 'session_id' => $session->id,
                 'token' => hash('sha256', $plainRefreshToken),
@@ -222,9 +225,11 @@ class AuthController extends Controller
                 'last_activity' => now(),
             ]);
 
-            $accessToken = $user
-                ->createToken("session-{$session->id}")
-                ->plainTextToken;
+            $accessToken = $user->createToken(
+                "session-{$session->id}",
+                ['*'],
+                now()->addDay()
+            );
 
             return response()->json([
                 'success' => true,
@@ -274,13 +279,11 @@ class AuthController extends Controller
 
     private function sendVerificationEmail(User $user)
     {
-        $cacheKey = 'email_verify_sent_' . $user->id;
+        $cacheKey = 'email_verify_sent_' . $user->email;
         $cooldown = 30;
 
-        if (Cache::has($cacheKey)) {
-            $expiryKey = $cacheKey . '_expiry';
-            $secondsLeft = Cache::get($expiryKey) - now()->timestamp;
-            $secondsLeft = max(1, $secondsLeft);
+        if (! Cache::add($cacheKey, true, now()->addSeconds($cooldown))) {
+            $secondsLeft = max(1, Cache::get($cacheKey . '_expiry') - now()->timestamp);
 
             return response()->json([
                 'success' => false,
@@ -289,48 +292,40 @@ class AuthController extends Controller
             ], 429);
         }
 
-        $existingToken = Cache::get('email_verify_user_' . $user->id);
-        if (!$existingToken) {
-            $code = $this->generateEmailVerifyCode($user);
-            dispatch(new SendVerificationCodeJob($user, $code));
-        }
+        Cache::put($cacheKey . '_expiry', now()->addSeconds($cooldown)->timestamp, now()->addSeconds($cooldown));
 
-        $expiryKey = $cacheKey . '_expiry';
-        Cache::put($cacheKey, true, now()->addSeconds($cooldown));
-        Cache::put($expiryKey, now()->addSeconds($cooldown)->timestamp, now()->addSeconds($cooldown));
+        $code = $this->generateEmailVerifyCode($user);
+        dispatch(new SendVerificationCodeJob($user, $code));
 
         return null;
     }
 
     private function generateEmailVerifyCode(User $user): string
     {
-        $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        EmailToken::where('email', $user->email)
+            ->where('type', 'verify_email')
+            ->where('is_used', false)
+            ->update(['is_used' => true]);
 
-        $userCacheKey = 'email_verify_user_' . $user->id;
-        $oldCode = Cache::get($userCacheKey);
-        if ($oldCode) {
-            Cache::forget('email_verify_' . $oldCode);
-        }
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
-        $ttl = now()->addMinutes(15);
-        Cache::put('email_verify_' . $code, [
+        EmailToken::create([
+            'email' => $user->email,
             'user_id' => $user->id,
-            'email' => $user->email
-        ], $ttl);
-        Cache::put($userCacheKey, $code, $ttl);
+            'type' => 'verify_email',
+            'token_hash' => hash('sha256', $code),
+            'expires_at' => now()->addMinutes(15),
+        ]);
 
         return $code;
     }
 
-
     protected function loginSuccess(User $user, Request $request)
     {
         return DB::transaction(function () use ($user, $request) {
-
             $browser = $request->header('X-Browser', 'Unknown Browser');
             $platform = $request->header('X-Platform', 'Unknown OS');
             $deviceType = $request->header('X-Device-Type', 'Unknown Device');
-
             $deviceName = "{$browser} on {$platform}";
 
             $session = AuthSession::updateOrCreate(
@@ -368,7 +363,6 @@ class AuthController extends Controller
             $accessToken = $newToken->plainTextToken;
 
             $plainRefreshToken = Str::random(64);
-
             RefreshToken::create([
                 'session_id' => $session->id,
                 'token' => hash('sha256', $plainRefreshToken),
@@ -381,17 +375,17 @@ class AuthController extends Controller
                 'verified' => (bool) $user->email_verified_at,
                 'access_token' => $accessToken,
                 'expires_at' => now()->addDay()->toIso8601String(),
-                'user' => [
-                    'firstname' => $user->firstname,
-                    'lastname' => $user->lastname,
-                    'middlename' => $user->middlename,
-                    'email' => $user->email,
-                    'phone' => $user->phone,
-                    'business' => $user->businesses->map(fn($business) => [
-                        'name' => $business->name,
-                        'alt_id' => $business->alt_id,
-                    ]),
-                ],
+                // 'user' => [
+                //     'firstname' => $user->firstname,
+                //     'lastname' => $user->lastname,
+                //     'middlename' => $user->middlename,
+                //     'email' => $user->email,
+                //     'phone' => $user->phone,
+                //     'business' => $user->businesses->map(fn($business) => [
+                //         'name' => $business->name,
+                //         'alt_id' => $business->alt_id,
+                //     ]),
+                // ],
                 'message' => 'Successfully logged in',
             ])->cookie(
                 'refresh_token',

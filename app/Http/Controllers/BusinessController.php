@@ -39,6 +39,7 @@ class BusinessController extends Controller
         $business = $user->businesses()->create($validated);
 
         return response()->json([
+            'success' => true,
             'message' => 'Business created successfully',
             'data' => [
                 'name'   => $business->name,
@@ -337,6 +338,36 @@ class BusinessController extends Controller
                 'secret_key' => Crypt::decryptString($apiKey->secret_key),
                 'environment' => $apiKey->environment,
                 'last_used_at' => $apiKey->last_used_at,
+            ],
+        ], 200);
+    }
+    public function deactivateBusiness(Request $request)
+    {
+        $user = auth()->user();
+
+        $validated = $request->validate([
+            'alt_id' => 'required|string',
+        ]);
+        $business = $user->businesses()->where('alt_id', $validated['alt_id'])->first();
+        if (!$business) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business not found',
+            ], 404);
+        }
+        if (!$business->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business is already deactivated',
+            ], 422);
+        }
+        $business->update(['is_active' => false]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Business deactivated successfully',
+            'data' => [
+                'alt_id' => $business->alt_id,
+                'is_active' => $business->is_active,
             ],
         ], 200);
     }
