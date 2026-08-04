@@ -234,8 +234,8 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'token_type' => 'Bearer',
-                'access_token' => $accessToken,
-                'expires_in' => 900,
+                'access_token' => $accessToken->plainTextToken,
+                'expires_in' =>  now()->addDay()->toIso8601String(),
             ])->cookie(
                 'refresh_token',
                 $plainRefreshToken,
@@ -398,6 +398,30 @@ class AuthController extends Controller
                 false,
                 'Strict'
             );
+        });
+    }
+
+    public function logout(Request $request)
+    {
+        $user = $request->user();
+        $currentToken = $user->currentAccessToken();
+
+        return DB::transaction(function () use ($user, $currentToken) {
+            $session = AuthSession::where('user_id', $user->id)
+                ->where('access_token_id', $currentToken->id)
+                ->first();
+
+            if ($session) {
+                $session->refreshTokens()->update(['revoked_at' => now()]);
+                $session->update(['revoked_at' => now()]);
+            }
+
+            $currentToken->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Successfully logged out',
+            ])->withoutCookie('refresh_token');
         });
     }
 }

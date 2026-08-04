@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class BusinessController extends Controller
 {
@@ -56,7 +57,7 @@ class BusinessController extends Controller
             'alt_id' => 'required|string',
         ]);
 
-        $business = $user->businesses()->with(['logo', 'preference'])->where('alt_id', $request->alt_id)->first();
+        $business = $user->businesses()->with(['logoUpload', 'preference'])->where('alt_id', $request->alt_id)->first();
 
         if (!$business) {
             return response()->json([
@@ -74,8 +75,8 @@ class BusinessController extends Controller
                 'phone' => $business->phone,
                 'business_type' => $business->business_type,
                 'industry' => $business->industry,
-                'logo' => $business->logo?->file_name,
-                'max_balance' => $business->max_balance,
+                'logo' => $business->logoUpload?->file_name,
+                'max_balance' => $business->max_balance !== null ? $business->max_balance / 100 : null,
                 'kyc_status' => $business->kyc_status,
                 'kyc_verified_at' => $business->kyc_verified_at,
                 'settlement_bank_code' => $business->settlement_bank_code,
@@ -112,8 +113,8 @@ class BusinessController extends Controller
             'success' => true,
             'data' => [
                 'alt_id' => $business->alt_id,
-                'balance' => $business->balance,
-                'pending_balance' => $business->pending_balance,
+                'balance' => $business->balance / 100,
+                'pending_balance' => $business->pending_balance / 100,
             ],
         ], 200);
     }
@@ -168,7 +169,12 @@ class BusinessController extends Controller
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:20',
             'industry' => 'nullable|string|max:255',
-            'logo' => 'sometimes|required|integer|exists:uploads,id',
+            'logo' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('uploads', 'id')->where('user_id', $user->id),
+            ],
             'settlement_bank_code' => 'sometimes|required|string',
             'settlement_account_number' => 'sometimes|required|string',
             'settlement_account_name' => 'sometimes|required|string',
@@ -196,7 +202,7 @@ class BusinessController extends Controller
                 'email' => $business->email,
                 'phone' => $business->phone,
                 'industry' => $business->industry,
-                'logo' => $business->logo?->file_name,
+                'logo' => $business->logoUpload?->file_name,
                 'settlement_bank_code' => $business->settlement_bank_code,
                 'settlement_account_number' => $business->settlement_account_number,
                 'settlement_account_name' => $business->settlement_account_name,

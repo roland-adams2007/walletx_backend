@@ -17,7 +17,9 @@ class EnsureJsonHeaders
             ], 406);
         }
 
-        if ($request->isMethod('post') || $request->isMethod('put') || $request->isMethod('patch')) {
+        $isMultipart = str_contains($request->header('Content-Type', ''), 'multipart/form-data');
+
+        if (($request->isMethod('post') || $request->isMethod('put') || $request->isMethod('patch')) && !$isMultipart) {
             if (!$request->isJson()) {
                 return response()->json([
                     'success' => false,

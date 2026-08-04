@@ -19,6 +19,7 @@ Route::post('/auth/resend-verification', [AuthController::class, 'resendVerifica
     ->middleware('throttle:resend_verification');
 Route::post('/auth/refresh', [AuthController::class, 'refresh'])
     ->middleware('throttle:refresh');
+Route::post('/auth/logout', [AuthController::class, 'logout']);
 Route::post('/transaction/initialize/inline', [InlineController::class, 'initialise'])->middleware('throttle:api');
 Route::post('/payments/charge', [InlineController::class, 'charge'])->middleware('throttle:api');
 Route::get('/payments/verify/{reference}', [InlineController::class, 'verify'])->middleware('throttle:api');

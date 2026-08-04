@@ -73,7 +73,7 @@ class Business extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function logo(): BelongsTo
+    public function logoUpload(): BelongsTo
     {
         return $this->belongsTo(Uploads::class, 'logo');
     }
@@ -92,9 +92,10 @@ class Business extends Model
     {
         return $this->kyc_status === 'verified';
     }
+
     public function getLogoUrlAttribute(): string
     {
-        $upload = $this->logo;
+        $upload = $this->logoUpload;
 
         if ($upload) {
             return $upload->file_name;
@@ -107,6 +108,7 @@ class Business extends Model
     {
         return $this->hasMany(ApiKey::class);
     }
+
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);

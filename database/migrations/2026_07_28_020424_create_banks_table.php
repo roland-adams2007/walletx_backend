@@ -13,6 +13,10 @@ return new class extends Migration
     {
         Schema::create('banks', function (Blueprint $table) {
             $table->id();
+            $table->string('bank_code')->unique()->index();
+            $table->string('name');
+            $table->boolean('is_active')->default(true);
+            $table->string('slug')->unique()->nullable();
             $table->timestamps();
         });
     }

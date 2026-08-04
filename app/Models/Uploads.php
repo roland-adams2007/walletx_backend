@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
 
 class Uploads extends Model
 {
@@ -26,11 +28,27 @@ class Uploads extends Model
 
     public static function upload(UploadedFile $file, int $userId, string $folder = 'uploads'): self
     {
-        $extension = $file->getClientOriginalExtension();
         $publicId = (string) Str::uuid();
+        $isImage = str_starts_with($file->getMimeType(), 'image/');
+
+        if ($isImage) {
+            $manager = new ImageManager(new Driver());
+            $encoded = $manager->read($file->getRealPath())->toWebp(quality: 85);
+
+            $extension = 'webp';
+            $mimeType = 'image/webp';
+            $contents = (string) $encoded;
+            $fileSize = strlen($contents);
+        } else {
+            $extension = $file->getClientOriginalExtension();
+            $mimeType = $file->getMimeType();
+            $contents = file_get_contents($file->getRealPath());
+            $fileSize = $file->getSize();
+        }
+
         $path = "{$folder}/{$publicId}.{$extension}";
 
-        Storage::disk('s3')->put($path, file_get_contents($file->getRealPath()));
+        Storage::disk('s3')->put($path, $contents);
 
         return self::create([
             'file_original_name' => $file->getClientOriginalName(),
@@ -38,8 +56,8 @@ class Uploads extends Model
             'public_id' => $publicId,
             'user_id' => $userId,
             'extension' => $extension,
-            'type' => $file->getMimeType(),
-            'file_size' => $file->getSize(),
+            'type' => $mimeType,
+            'file_size' => $fileSize,
         ]);
     }
 
