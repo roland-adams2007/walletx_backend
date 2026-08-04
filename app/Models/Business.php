@@ -57,8 +57,9 @@ class Business extends Model
 
         static::created(function (Business $business) {
             $business->preference()->create([
-                'transaction_receipt_bearer' => 'business',
-                'transaction_fee_bearer' => 'business',
+                'send_receipt_to_business' => true,
+                'send_receipt_to_customer' => false,
+                'charge_fee_to_customer' => false,
             ]);
         });
     }
@@ -112,5 +113,10 @@ class Business extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);
+    }
+
+    public function customers()
+    {
+        return $this->hasMany(Customer::class);
     }
 }

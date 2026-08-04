@@ -85,8 +85,9 @@ class BusinessController extends Controller
                 'is_active' => $business->is_active,
                 'last_transaction_at' => $business->last_transaction_at,
                 'preference' => [
-                    'transaction_receipt_bearer' => $business->preference?->transaction_receipt_bearer,
-                    'transaction_fee_bearer' => $business->preference?->transaction_fee_bearer,
+                    'send_receipt_to_business' => $business->preference?->send_receipt_to_business,
+                    'send_receipt_to_customer' => $business->preference?->send_receipt_to_customer,
+                    'charge_fee_to_customer' => $business->preference?->charge_fee_to_customer,
                 ],
             ],
         ], 200);
@@ -213,11 +214,14 @@ class BusinessController extends Controller
     public function updatePreference(Request $request)
     {
         $user = auth()->user();
+
         $validated = $request->validate([
             'alt_id' => 'required|string',
-            'transaction_receipt_bearer' => 'sometimes|required|in:business,customer',
-            'transaction_fee_bearer' => 'sometimes|required|in:business,customer',
+            'send_receipt_to_business' => 'sometimes|required|boolean',
+            'send_receipt_to_customer' => 'sometimes|required|boolean',
+            'charge_fee_to_customer' => 'sometimes|required|boolean',
         ]);
+
         $business = $user->businesses()->where('alt_id', $validated['alt_id'])->first();
 
         if (!$business) {
@@ -226,24 +230,28 @@ class BusinessController extends Controller
                 'message' => 'Business not found',
             ], 404);
         }
+
         unset($validated['alt_id']);
+
         if (empty($validated)) {
             return response()->json([
                 'success' => false,
                 'message' => 'No preference fields provided',
             ], 422);
         }
+
         $business->preference()->update($validated);
+
         return response()->json([
             'success' => true,
             'message' => 'Preference updated successfully',
             'data' => [
-                'transaction_receipt_bearer' => $business->preference->transaction_receipt_bearer,
-                'transaction_fee_bearer' => $business->preference->transaction_fee_bearer,
+                'send_receipt_to_business' => $business->preference->send_receipt_to_business,
+                'send_receipt_to_customer' => $business->preference->send_receipt_to_customer,
+                'charge_fee_to_customer' => $business->preference->charge_fee_to_customer,
             ],
         ], 200);
     }
-
     public function rotateApiKeys(Request $request)
     {
         $user = auth()->user();
@@ -261,10 +269,10 @@ class BusinessController extends Controller
             ], 404);
         }
 
-        $rawSecret = 'sk_test_' . Str::random(32);
+        $rawSecret = 'sk_live_' . Str::random(32);
 
         $apiKey = $business->apiKeys()
-            ->where('environment', 'test')
+            ->where('environment', 'live')
             ->where('status', 'active')
             ->first();
 
@@ -275,13 +283,13 @@ class BusinessController extends Controller
             $message = 'Secret key rotated successfully.';
         } else {
             $apiKey = $business->apiKeys()->create([
-                'environment' => 'test',
-                'public_key' => 'pk_test_' . Str::random(24),
+                'environment' => 'live',
+                'public_key' => 'pk_live_' . Str::random(24),
                 'secret_key' => Crypt::encryptString($rawSecret),
                 'status' => 'active',
             ]);
 
-            $message = 'Test API key generated successfully.';
+            $message = 'Live API key generated successfully.';
         }
         return response()->json([
             'success' => true,
@@ -293,7 +301,6 @@ class BusinessController extends Controller
             ],
         ], 200);
     }
-
     public function getApiKeys(Request $request)
     {
         $user = auth()->user();
@@ -312,16 +319,16 @@ class BusinessController extends Controller
         }
 
         $apiKey = $business->apiKeys()
-            ->where('environment', 'test')
+            ->where('environment', 'live')
             ->where('status', 'active')
             ->first();
 
         if (!$apiKey) {
-            $rawSecret = 'sk_test_' . Str::random(32);
+            $rawSecret = 'sk_live_' . Str::random(32);
 
             $apiKey = $business->apiKeys()->create([
-                'environment' => 'test',
-                'public_key' => 'pk_test_' . Str::random(24),
+                'environment' => 'live',
+                'public_key' => 'pk_live_' . Str::random(24),
                 'secret_key' => Crypt::encryptString($rawSecret),
                 'status' => 'active',
             ]);
@@ -332,6 +339,8 @@ class BusinessController extends Controller
                     'public_key' => $apiKey->public_key,
                     'secret_key' => $rawSecret,
                     'environment' => $apiKey->environment,
+                    'webhook_url' => $apiKey->webhook_url,
+                    'ip_whitelist' => $apiKey->ip_whitelist ?? [],
                     'last_used_at' => $apiKey->last_used_at,
                 ],
             ], 200);
@@ -343,6 +352,8 @@ class BusinessController extends Controller
                 'public_key' => $apiKey->public_key,
                 'secret_key' => Crypt::decryptString($apiKey->secret_key),
                 'environment' => $apiKey->environment,
+                'webhook_url' => $apiKey->webhook_url,
+                'ip_whitelist' => $apiKey->ip_whitelist ?? [],
                 'last_used_at' => $apiKey->last_used_at,
             ],
         ], 200);
@@ -374,6 +385,126 @@ class BusinessController extends Controller
             'data' => [
                 'alt_id' => $business->alt_id,
                 'is_active' => $business->is_active,
+            ],
+        ], 200);
+    }
+    public function updateWebhook(Request $request)
+    {
+        $user = auth()->user();
+
+        $validated = $request->validate([
+            'alt_id' => 'required|string',
+            'webhook_url' => 'nullable|url|max:255',
+        ]);
+
+        $business = $user->businesses()->where('alt_id', $validated['alt_id'])->first();
+
+        if (!$business) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business not found',
+            ], 404);
+        }
+
+        $apiKey = $business->apiKeys()
+            ->where('environment', 'live')
+            ->where('status', 'active')
+            ->first();
+
+        if (!$apiKey) {
+            return response()->json([
+                'success' => false,
+                'message' => 'API key not found',
+            ], 404);
+        }
+
+        $apiKey->update([
+            'webhook_url' => $validated['webhook_url'] ?? null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Webhook updated successfully',
+            'data' => [
+                'webhook_url' => $apiKey->webhook_url,
+            ],
+        ], 200);
+    }
+    public function updateIpWhitelist(Request $request)
+    {
+        $user = auth()->user();
+
+        $validated = $request->validate([
+            'alt_id' => 'required|string',
+            'ip_whitelist' => 'present|array',
+            'ip_whitelist.*' => 'ip',
+        ]);
+
+        $business = $user->businesses()->where('alt_id', $validated['alt_id'])->first();
+
+        if (!$business) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business not found',
+            ], 404);
+        }
+
+        $apiKey = $business->apiKeys()
+            ->where('environment', 'live')
+            ->where('status', 'active')
+            ->first();
+
+        if (!$apiKey) {
+            return response()->json([
+                'success' => false,
+                'message' => 'API key not found',
+            ], 404);
+        }
+
+        $apiKey->update([
+            'ip_whitelist' => $validated['ip_whitelist'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'IP whitelist updated successfully',
+            'data' => [
+                'ip_whitelist' => $apiKey->ip_whitelist,
+            ],
+        ], 200);
+    }
+    public function updateSettlementBank(Request $request)
+    {
+        $user = auth()->user();
+
+        $validated = $request->validate([
+            'alt_id' => 'required|string',
+            'settlement_bank_code' => 'required|string',
+            'settlement_account_number' => 'required|string',
+            'settlement_account_name' => 'required|string',
+        ]);
+
+        $business = $user->businesses()->where('alt_id', $validated['alt_id'])->first();
+
+        if (!$business) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business not found',
+            ], 404);
+        }
+
+        unset($validated['alt_id']);
+
+        $business->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Settlement bank details updated successfully',
+            'data' => [
+                'alt_id' => $business->alt_id,
+                'settlement_bank_code' => $business->settlement_bank_code,
+                'settlement_account_number' => $business->settlement_account_number,
+                'settlement_account_name' => $business->settlement_account_name,
             ],
         ], 200);
     }

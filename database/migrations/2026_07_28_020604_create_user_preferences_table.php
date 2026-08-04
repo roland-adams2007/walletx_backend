@@ -11,8 +11,9 @@ return new class extends Migration
         Schema::create('user_preferences', function (Blueprint $table) {
             $table->id();
             $table->foreignId('business_id')->constrained('businesses')->cascadeOnDelete();
-            $table->enum('transaction_receipt_bearer', ['business', 'customer'])->default('business');
-            $table->enum('transaction_fee_bearer', ['business', 'customer'])->default('business');
+            $table->boolean('send_receipt_to_business')->default(true);
+            $table->boolean('send_receipt_to_customer')->default(true);
+            $table->boolean('charge_fee_to_customer')->default(false);
             $table->timestamps();
         });
     }

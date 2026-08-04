@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\api\InlineController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BankController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\UploadController;
 use App\Http\Controllers\UserController;
@@ -24,6 +25,7 @@ Route::post('/transaction/initialize/inline', [InlineController::class, 'initial
 Route::post('/payments/charge', [InlineController::class, 'charge'])->middleware('throttle:api');
 Route::get('/payments/verify/{reference}', [InlineController::class, 'verify'])->middleware('throttle:api');
 
+
 Route::middleware([
     'auth:sanctum',
     'throttle:api',
@@ -37,12 +39,17 @@ Route::middleware([
     Route::get('/business', [BusinessController::class, 'getBusinessDetails']);
     Route::get('/business/balance', [BusinessController::class, 'getBusinessBalance']);
     Route::put('/business', [BusinessController::class, 'updateBusinessDetails']);
+    Route::put('/business/settlement-bank', [BusinessController::class, 'updateSettlementBank']);
     Route::put('/business/preference', [BusinessController::class, 'updatePreference']);
     Route::post('/business/upgrade', [BusinessController::class, 'upgradeToRegistered']);
     Route::get('/business/api-keys', [BusinessController::class, 'getApiKeys']);
     Route::post('/business/api-keys/rotate', [BusinessController::class, 'rotateApiKeys']);
+    Route::put('/business/api-keys/webhook', [BusinessController::class, 'updateWebhook']);
+    Route::put('/business/api-keys/ip-whitelist', [BusinessController::class, 'updateIpWhitelist']);
     Route::post('/business/deactivate', [BusinessController::class, 'deactivateBusiness']);
     Route::post('/uploads', [UploadController::class, 'store']);
+    Route::get('/banks', [BankController::class, 'fetchAll']);
+    Route::post('/bank/verify', [BankController::class, 'verifyBankAccount']);
 });
 
 Route::fallback(fn() => response()->json([

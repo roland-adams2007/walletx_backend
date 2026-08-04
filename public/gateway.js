@@ -44,6 +44,8 @@
         check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
         lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
         alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>',
+        xmark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+        clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>',
     };
 
     function formatAmount(kobo) {
@@ -164,17 +166,17 @@
       <div class="wx-grabber"></div>
       <button class="wx-close" id="wx-close-btn" aria-label="Close">${ICONS.close}</button>
 
-      <div class="wx-sidebar">
+      <div class="wx-sidebar" id="wx-sidebar">
         <p class="wx-sidebar-label">PAY WITH</p>
         <div class="wx-method active" data-tab="card">${ICONS.card}<span>Card</span></div>
         <div class="wx-method" data-tab="transfer">${ICONS.transfer}<span>Transfer</span></div>
       </div>
 
       <div class="wx-content">
+        <div id="wx-form-wrap">
         <div class="wx-topbar">
           <div class="wx-brandmark-row">
             <img class="wx-brandmark" id="wx-brandmark" src="${merchant.logo}" alt="${merchant.name}" />
-            <span class="wx-brand-name">${merchant.name}</span>
           </div>
           <div class="wx-topbar-right">
             <p class="wx-email">${self.email}</p>
@@ -233,6 +235,9 @@
 
           <p class="wx-error" id="wx-transfer-error"></p>
         </div>
+        </div>
+
+        <div id="wx-result-wrap" style="display:none;"></div>
 
         <p class="wx-secure">${ICONS.lock}Secured by <strong>WalletX</strong></p>
       </div>
@@ -316,6 +321,81 @@
             modal.querySelector("#wx-card-outcome").style.display = "";
         };
 
+        function showFormWrap() {
+            modal.querySelector("#wx-sidebar").style.display = "";
+            modal.querySelector("#wx-form-wrap").style.display = "";
+            modal.querySelector("#wx-result-wrap").style.display = "none";
+            modal.querySelector("#wx-card-form-actions").style.display = "";
+            modal.querySelector("#wx-card-outcome").style.display = "none";
+        }
+
+        function showResult(state, payload) {
+            const sidebar = modal.querySelector("#wx-sidebar");
+            const formWrap = modal.querySelector("#wx-form-wrap");
+            const wrap = modal.querySelector("#wx-result-wrap");
+
+            sidebar.style.display = "none";
+            formWrap.style.display = "none";
+            wrap.style.display = "";
+
+            if (state === "success") {
+                wrap.innerHTML = `
+          <div class="wx-result">
+            <div class="wx-result-icon wx-icon-success">${ICONS.check}</div>
+            <p class="wx-result-title">Payment Successful</p>
+            <p class="wx-result-subtitle">Paid ${formatAmount(self.amount)} to ${merchant.name}</p>
+          </div>
+        `;
+
+                const finish = function () {
+                    if (document.body.contains(overlay)) {
+                        document.body.removeChild(overlay);
+                    }
+                    self.onSuccess(payload);
+                };
+
+                setTimeout(finish, 2200);
+            } else if (state === "pending") {
+                wrap.innerHTML = `
+          <div class="wx-result">
+            <div class="wx-result-icon wx-icon-pending">${ICONS.clock}</div>
+            <p class="wx-result-title">Payment Pending</p>
+            <p class="wx-result-subtitle">We're still waiting on confirmation for this payment. This can take a few minutes.</p>
+            <p class="wx-result-amount">${formatAmount(self.amount)}</p>
+            <p class="wx-result-ref">Ref: ${self.reference}</p>
+            <div class="wx-result-actions">
+              <button class="wx-btn" id="wx-result-close">Close</button>
+            </div>
+          </div>
+        `;
+
+                wrap.querySelector("#wx-result-close").onclick = function () {
+                    document.body.removeChild(overlay);
+                    self.onClose();
+                };
+            } else {
+                wrap.innerHTML = `
+          <div class="wx-result">
+            <div class="wx-result-icon wx-icon-failed">${ICONS.xmark}</div>
+            <p class="wx-result-title">Payment Failed</p>
+            <p class="wx-result-subtitle">We couldn't complete this payment. Please check your details and try again.</p>
+            <div class="wx-result-actions">
+              <button class="wx-btn" id="wx-result-retry">Try Again</button>
+              <button class="wx-btn wx-btn-ghost" id="wx-result-cancel">Cancel</button>
+            </div>
+          </div>
+        `;
+
+                wrap.querySelector("#wx-result-retry").onclick = function () {
+                    showFormWrap();
+                };
+                wrap.querySelector("#wx-result-cancel").onclick = function () {
+                    document.body.removeChild(overlay);
+                    self.onClose();
+                };
+            }
+        }
+
         // Both card and transfer post to the same /payments/charge endpoint.
         // `channel` tells the backend which path to run, `simulate` drives
         // the outcome. Nothing else needs to be resent — the backend
@@ -361,21 +441,26 @@
 
                 const data = await res.json();
 
-                if (!data.success) {
-                    setError(errorEl, data.message || "Payment failed.");
-                    buttons.forEach(function (b) {
-                        b.disabled = false;
-                    });
-                    return;
-                }
-
-                document.body.removeChild(overlay);
-                self.onSuccess(data);
-            } catch (err) {
-                setError(errorEl, "Something went wrong.");
                 buttons.forEach(function (b) {
                     b.disabled = false;
                 });
+
+                if (!data.success) {
+                    showResult("failed");
+                    return;
+                }
+
+                if (outcome === "pending") {
+                    showResult("pending", data);
+                    return;
+                }
+
+                showResult("success", data);
+            } catch (err) {
+                buttons.forEach(function (b) {
+                    b.disabled = false;
+                });
+                showResult("failed");
             }
         }
 

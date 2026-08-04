@@ -14,6 +14,8 @@ return new class extends Migration
             $table->enum('environment', ['live', 'test'])->default('test');
             $table->string('public_key')->unique();
             $table->text('secret_key')->unique();
+            $table->string('webhook_url')->nullable();
+            $table->json('ip_whitelist')->nullable(); 
             $table->enum('status', ['active', 'inactive', 'revoked'])->default('active');
             $table->timestamp('last_used_at')->nullable();
             $table->timestamps();
