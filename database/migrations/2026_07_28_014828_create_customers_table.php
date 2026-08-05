@@ -13,16 +13,15 @@ return new class extends Migration
     {
         Schema::create('customers', function (Blueprint $table) {
             $table->id();
-            $table->string('cus_id')->unique()->index();
+            $table->string('cus_id')->unique();
             $table->foreignId('business_id')
                 ->constrained('businesses')
                 ->cascadeOnDelete();
             $table->string('name')->nullable();
             $table->string('phone')->nullable();
-            $table->string('email')->unique()->index();
+            $table->string('email')->unique();
             $table->boolean('is_blacklist')->default(false);
             $table->timestamps();
-
             $table->index('is_blacklist');
         });
     }

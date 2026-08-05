@@ -119,4 +119,9 @@ class Business extends Model
     {
         return $this->hasMany(Customer::class);
     }
+
+    public function payouts(): HasMany
+    {
+        return $this->hasMany(Payout::class);
+    }
 }

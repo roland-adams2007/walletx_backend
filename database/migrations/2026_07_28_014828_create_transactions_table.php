@@ -10,7 +10,6 @@ return new class extends Migration
     {
         Schema::create('transactions', function (Blueprint $table) {
             $table->id();
-
             $table->string('reference')->unique();
             $table->string('access_code')->unique()->nullable();
             $table->foreignId('business_id')->constrained('businesses')->cascadeOnDelete();
@@ -20,6 +19,7 @@ return new class extends Migration
             $table->enum('type', ['credit', 'debit']);
             $table->string('transaction_type')->default('payment');
             $table->string('channel')->default('card');
+            $table->bigInteger('sub_amount');
             $table->bigInteger('amount');
             $table->bigInteger('fee')->default(0);
             $table->bigInteger('net_amount');

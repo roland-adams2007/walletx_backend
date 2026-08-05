@@ -78,12 +78,12 @@ class BusinessController extends Controller
                 'logo' => $business->logoUpload?->file_name,
                 'max_balance' => $business->max_balance !== null ? $business->max_balance / 100 : null,
                 'kyc_status' => $business->kyc_status,
-                'kyc_verified_at' => $business->kyc_verified_at,
+                'kyc_verified_at' => $business->kyc_verified_at?->toIso8601String(),
                 'settlement_bank_code' => $business->settlement_bank_code,
                 'settlement_account_number' => $business->settlement_account_number,
                 'settlement_account_name' => $business->settlement_account_name,
                 'is_active' => $business->is_active,
-                'last_transaction_at' => $business->last_transaction_at,
+                'last_transaction_at' => $business->last_transaction_at?->toIso8601String(),
                 'preference' => [
                     'send_receipt_to_business' => $business->preference?->send_receipt_to_business,
                     'send_receipt_to_customer' => $business->preference?->send_receipt_to_customer,
@@ -155,7 +155,7 @@ class BusinessController extends Controller
                 'business_type' => $business->business_type,
                 'max_balance' => $business->max_balance,
                 'kyc_status' => $business->kyc_status,
-                'kyc_verified_at' => $business->kyc_verified_at,
+                'kyc_verified_at' => $business->kyc_verified_at?->toIso8601String(),
             ],
         ], 200);
     }
@@ -341,7 +341,7 @@ class BusinessController extends Controller
                     'environment' => $apiKey->environment,
                     'webhook_url' => $apiKey->webhook_url,
                     'ip_whitelist' => $apiKey->ip_whitelist ?? [],
-                    'last_used_at' => $apiKey->last_used_at,
+                    'last_used_at' => $apiKey->last_used_at?->toIso8601String(),
                 ],
             ], 200);
         }
@@ -354,7 +354,7 @@ class BusinessController extends Controller
                 'environment' => $apiKey->environment,
                 'webhook_url' => $apiKey->webhook_url,
                 'ip_whitelist' => $apiKey->ip_whitelist ?? [],
-                'last_used_at' => $apiKey->last_used_at,
+                'last_used_at' => $apiKey->last_used_at?->toIso8601String(),
             ],
         ], 200);
     }

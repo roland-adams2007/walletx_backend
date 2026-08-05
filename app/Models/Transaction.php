@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Transaction extends Model
 {
@@ -77,7 +78,10 @@ class Transaction extends Model
     {
         return $this->belongsTo(ApiKey::class);
     }
-
+    public function payout(): BelongsTo
+    {
+        return $this->belongsTo(Payout::class);
+    }
     public function isSuccessful(): bool
     {
         return $this->status === 'success';

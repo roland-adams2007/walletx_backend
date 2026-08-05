@@ -83,6 +83,9 @@
         this.amount = config.amount;
         this.reference = config.reference;
         this.merchant = { name: "Merchant", logo: DEFAULT_LOGO };
+        // Set once initialiseTransaction() resolves; drives the countdown
+        // shown in the modal.
+        this.expiresAt = null;
         this.onSuccess = config.callback;
         this.onClose = config.onClose || function () {};
         this.onError =
@@ -137,6 +140,9 @@
             const initData = await self.initialiseTransaction();
             self.amount = initData.amount;
             self.reference = initData.reference;
+            self.expiresAt = initData.expires_at
+                ? new Date(initData.expires_at)
+                : null;
             self.merchant = {
                 name:
                     (initData.merchant && initData.merchant.name) || "Merchant",
@@ -181,6 +187,7 @@
           <div class="wx-topbar-right">
             <p class="wx-email">${self.email}</p>
             <p class="wx-pay-line">Pay <strong>${formatAmount(self.amount)}</strong></p>
+            <p class="wx-timer" id="wx-timer">${ICONS.clock}<span id="wx-timer-text">Expires in --:--</span></p>
           </div>
         </div>
 
@@ -245,6 +252,59 @@
 
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
+
+        function clearCountdown() {
+            if (self._countdownInterval) {
+                clearInterval(self._countdownInterval);
+                self._countdownInterval = null;
+            }
+        }
+
+        function handleExpiry() {
+            const payBtn = modal.querySelector("#wx-pay-btn");
+            if (payBtn) payBtn.disabled = true;
+
+            modal.querySelectorAll(".wx-outcome-btn").forEach(function (b) {
+                b.disabled = true;
+            });
+
+            const message =
+                "This transaction has expired. Please close this window and start again.";
+            setError(modal.querySelector("#wx-error"), message);
+            setError(modal.querySelector("#wx-transfer-error"), message);
+        }
+
+        function startCountdown() {
+            const timerEl = modal.querySelector("#wx-timer");
+            const timerText = modal.querySelector("#wx-timer-text");
+            if (!self.expiresAt || !timerText) return;
+
+            function tick() {
+                const msLeft = self.expiresAt.getTime() - Date.now();
+
+                if (msLeft <= 0) {
+                    clearCountdown();
+                    timerText.textContent = "Expired";
+                    timerEl.style.color = "var(--wx-danger)";
+                    handleExpiry();
+                    return;
+                }
+
+                const totalSeconds = Math.floor(msLeft / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                timerText.textContent =
+                    "Expires in " +
+                    String(minutes).padStart(2, "0") +
+                    ":" +
+                    String(seconds).padStart(2, "0");
+            }
+
+            tick();
+            self._countdownInterval = setInterval(tick, 1000);
+        }
+
+        startCountdown();
 
         // If the business's own logo fails to load (bad S3 url, CORS, etc.)
         // fall back to the platform logo rather than showing a broken image.
@@ -348,6 +408,7 @@
         `;
 
                 const finish = function () {
+                    clearCountdown();
                     if (document.body.contains(overlay)) {
                         document.body.removeChild(overlay);
                     }
@@ -370,6 +431,7 @@
         `;
 
                 wrap.querySelector("#wx-result-close").onclick = function () {
+                    clearCountdown();
                     document.body.removeChild(overlay);
                     self.onClose();
                 };
@@ -390,6 +452,7 @@
                     showFormWrap();
                 };
                 wrap.querySelector("#wx-result-cancel").onclick = function () {
+                    clearCountdown();
                     document.body.removeChild(overlay);
                     self.onClose();
                 };
@@ -487,6 +550,7 @@
         });
 
         modal.querySelector("#wx-close-btn").onclick = function () {
+            clearCountdown();
             document.body.removeChild(overlay);
             self.onClose();
         };
