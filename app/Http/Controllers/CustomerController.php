@@ -14,7 +14,18 @@ class CustomerController extends Controller
     {
         $validated = $request->validate([
             'email' => 'nullable|email|max:255',
+            'business_id' => 'required|exists:businesses,alt_id',
         ]);
+
+        if (!empty($validated['business_id'])) {
+            $business = Business::where('alt_id', $validated['business_id'])->first();
+            if (!$business) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Business not found',
+                ], 404);
+            }
+        }
 
         $query = Customer::query();
 
@@ -22,7 +33,7 @@ class CustomerController extends Controller
             $query->where('email', 'like', '%' . $validated['email'] . '%');
         }
 
-        $customers = $query->orderByDesc('id')->paginate(20);
+        $customers = $query->where('business_id', $business->id)->orderByDesc('id')->paginate(20);
 
         $data = $customers->getCollection()->map(function ($customer) {
             return [
