@@ -13,13 +13,16 @@ class SettlePayouts extends Command
 {
     protected $signature = 'payouts:settle';
 
-    protected $description = 'Batch every business\'s unsettled successful payment transactions into a single payout each';
+    protected $description = 'Batch every business daily successful payment transactions into a single payout';
 
     public function handle(): int
     {
+        $settlementDate = now()->subDay()->toDateString();
+
         $businessIds = Transaction::where('status', 'success')
             ->where('transaction_type', 'payment')
             ->whereNull('payout_id')
+            ->whereDate('paid_at', $settlementDate)
             ->distinct()
             ->pluck('business_id');
 
@@ -29,13 +32,14 @@ class SettlePayouts extends Command
         }
 
         foreach ($businessIds as $businessId) {
-            DB::transaction(function () use ($businessId) {
-                $business = Business::where('id', $businessId)->lockForUpdate()->first();
+            DB::transaction(function () use ($businessId, $settlementDate) {
+                $business = Business::lockForUpdate()->find($businessId);
 
                 $transactions = Transaction::where('business_id', $businessId)
                     ->where('status', 'success')
-                    ->where('type', 'payment')
+                    ->where('transaction_type', 'payment')
                     ->whereNull('payout_id')
+                    ->whereDate('paid_at', $settlementDate)
                     ->lockForUpdate()
                     ->get();
 
@@ -60,18 +64,19 @@ class SettlePayouts extends Command
                     'bank_code' => $business->settlement_bank_code,
                     'account_number' => $business->settlement_account_number,
                     'account_name' => $business->settlement_account_name,
-                    'narration' => 'Settlement for ' . $transactions->count() . ' payment transaction(s)',
+                    'narration' => 'Settlement for ' . $settlementDate,
                     'status' => 'pending',
                 ]);
 
                 Transaction::whereIn('id', $transactions->pluck('id'))
-                    ->update(['payout_id' => $payout->id]);
-
-                $business->decrement('pending_balance', $totalNet);
+                    ->update([
+                        'payout_id' => $payout->id,
+                    ]);
             });
         }
 
         $this->info('Settlement complete for ' . $businessIds->count() . ' business(es).');
+
         return self::SUCCESS;
     }
 }

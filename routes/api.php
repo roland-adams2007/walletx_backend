@@ -53,6 +53,7 @@ Route::middleware([
     Route::put('/customers/{cus_id}', [CustomerController::class, 'update']);
     Route::patch('/customers/{cus_id}/blacklist', [CustomerController::class, 'updateBlacklist']);
     Route::get('/transactions', [TransactionController::class, 'index']);
+    Route::get('/transactions/{reference}', [TransactionController::class, 'show']);
     Route::post('/uploads', [UploadController::class, 'store']);
     Route::get('/banks', [BankController::class, 'fetchAll']);
     Route::post('/bank/verify', [BankController::class, 'verifyBankAccount']);

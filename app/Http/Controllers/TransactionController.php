@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\Transaction;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class TransactionController extends Controller
@@ -42,6 +43,7 @@ class TransactionController extends Controller
                 'transactions.reference',
                 'transactions.channel',
                 'transactions.created_at as date',
+                'transactions.amount',
             );
 
         if (!empty($validated['cus_id'])) {
@@ -98,6 +100,17 @@ class TransactionController extends Controller
             ->orderByDesc('transactions.id')
             ->paginate(20);
 
+        $transactions->getCollection()->transform(function ($item) {
+            if ($item->date) {
+                $item->date = Carbon::parse($item->date)->toIso8601String();
+            }
+            // Convert from kobo to naira (divide by 100)
+            if (isset($item->amount)) {
+                $item->amount = $item->amount / 100;
+            }
+            return $item;
+        });
+
         return response()->json([
             'success' => true,
             'message' => 'Transactions retrieved successfully',
@@ -111,8 +124,55 @@ class TransactionController extends Controller
         ]);
     }
 
-    public function show($transactionId)
+    /**
+     * Display a specific transaction by reference
+     *
+     * @param string $reference
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function show($reference)
     {
-        // Fetch and return a specific transaction by ID
+        $transaction = Transaction::with(['customer', 'business'])
+            ->where('reference', $reference)
+            ->first();
+
+        if (!$transaction) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Transaction not found',
+            ], 404);
+        }
+
+        $data = [
+            'reference' => $transaction->reference,
+            'amount' => $transaction->amount / 100, // Convert from kobo to naira
+            'fee' => $transaction->fee / 100, // Convert from kobo to naira
+            'net_amount' => $transaction->net_amount / 100, // Convert from kobo to naira
+            'channel' => $transaction->channel,
+            'transaction_type' => $transaction->transaction_type,
+            'status' => $transaction->status,
+            'date' => $transaction->created_at ? $transaction->created_at?->toIso8601String() : null,
+            'paid_at' => $transaction->paid_at ? $transaction->paid_at?->toIso8601String() : null,
+            'narration' => $transaction->description,
+            'customer' => $transaction->customer ? [
+                'name' => $transaction->customer->name,
+                'email' => $transaction->customer->email,
+                'cus_id' => $transaction->customer->cus_id,
+            ] : null,
+            'authorization' => $transaction->authorization,
+            'ip_address' => $transaction->ip_address,
+            'device' => $transaction->device,
+            'user_agent' => $transaction->user_agent,
+            'balance_before' => $transaction->balance_before ? $transaction->balance_before / 100 : null, // Convert from kobo to naira
+            'balance_after' => $transaction->balance_after ? $transaction->balance_after / 100 : null, // Convert from kobo to naira
+            'gateway_response' => $transaction->gateway_response,
+            'meta' => $transaction->meta,
+        ];
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Transaction retrieved successfully',
+            'data' => $data,
+        ]);
     }
 }
