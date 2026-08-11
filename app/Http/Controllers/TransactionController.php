@@ -47,7 +47,7 @@ class TransactionController extends Controller
         }
 
         $query = Transaction::query()
-            ->join('customers', 'customers.id', '=', 'transactions.customer_id')
+            ->leftJoin('customers', 'customers.id', '=', 'transactions.customer_id')
             ->select(
                 'transactions.status',
                 'customers.email as customer_email',

@@ -2,8 +2,7 @@
 
 namespace App\Http\Controllers;
 
-
-
+use App\Models\Business;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 
@@ -505,6 +504,30 @@ class BusinessController extends Controller
                 'settlement_bank_code' => $business->settlement_bank_code,
                 'settlement_account_number' => $business->settlement_account_number,
                 'settlement_account_name' => $business->settlement_account_name,
+            ],
+        ], 200);
+    }
+
+    public function fetchOtherBusinessDetails(Request $request)
+    {
+        $request->validate([
+            'alt_id' => 'required|string',
+        ]);
+
+        $business = Business::where('alt_id', $request->alt_id)->first();
+
+        if (!$business) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business not found',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'business_id' => $business->alt_id,
+                'name' => $business->name,
             ],
         ], 200);
     }

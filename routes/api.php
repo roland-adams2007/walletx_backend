@@ -7,6 +7,7 @@ use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\TransferController;
 use App\Http\Controllers\UploadController;
 use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
@@ -37,6 +38,7 @@ Route::middleware([
     Route::put('/user/password', [UserController::class, 'updatePassword']);
     Route::post('/business', [BusinessController::class, 'create']);
     Route::get('/business', [BusinessController::class, 'getBusinessDetails']);
+    Route::get('/business/other', [BusinessController::class, 'fetchOtherBusinessDetails']);
     Route::get('/business/balance', [BusinessController::class, 'getBusinessBalance']);
     Route::put('/business', [BusinessController::class, 'updateBusinessDetails']);
     Route::put('/business/settlement-bank', [BusinessController::class, 'updateSettlementBank']);
@@ -57,6 +59,8 @@ Route::middleware([
     Route::post('/uploads', [UploadController::class, 'store']);
     Route::get('/banks', [BankController::class, 'fetchAll']);
     Route::post('/bank/verify', [BankController::class, 'verifyBankAccount']);
+    Route::post('/transfer/bank', [TransferController::class, 'tranferToBank']);
+    Route::post('/transfer/business', [TransferController::class, 'transferToBusiness']);
     Route::get('/dashboard/revenue', [DashboardController::class, 'revenue']);
     Route::get('/dashboard/rate', [DashboardController::class, 'rate']);
 });
