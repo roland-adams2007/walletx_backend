@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\api\CheckoutController;
 use App\Http\Controllers\api\InlineController;
+use App\Http\Controllers\api\RedirectController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BankController;
 use App\Http\Controllers\BusinessController;
@@ -26,8 +28,10 @@ Route::post('/auth/resend-verification', [AuthController::class, 'resendVerifica
 Route::post('/auth/refresh', [AuthController::class, 'refresh'])
     ->middleware('throttle:refresh');
 Route::post('/transaction/initialize/inline', [InlineController::class, 'initialise'])->middleware('throttle:api');
+Route::post('/transaction/initialize/redirect', [RedirectController::class, 'initialise'])->middleware('throttle:api');
 Route::post('/payments/charge', [InlineController::class, 'charge'])->middleware('throttle:api');
 Route::get('/payments/verify/{reference}', [InlineController::class, 'verify'])->middleware('throttle:api');
+Route::post('/checkout/{accessCode}/cancel', [CheckoutController::class, 'cancel'])->name('checkout.cancel');
 Route::middleware([
     'auth:sanctum',
     'throttle:api',

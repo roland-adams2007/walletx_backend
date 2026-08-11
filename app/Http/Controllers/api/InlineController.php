@@ -5,12 +5,15 @@ namespace App\Http\Controllers\api;
 use App\Http\Controllers\Controller;
 use App\Jobs\SendBusinessReceipt;
 use App\Jobs\SendCustomerReceipt;
+use App\Jobs\SendWebhook;
 use App\Models\ApiKey;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\Payout;
 use App\Models\Transaction;
+use App\Models\Webhook;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -194,7 +197,8 @@ class InlineController extends Controller
     public function charge(Request $request)
     {
         $validated = $request->validate([
-            'public_key' => 'required|string',
+            'public_key' => 'nullable|string',
+            'access_code' => 'nullable|string',
             'reference' => 'required|string',
             'channel' => 'required|in:card,bank_transfer',
             'card_number' => 'required_if:channel,card|string',
@@ -204,22 +208,43 @@ class InlineController extends Controller
             'simulate' => 'nullable|in:success,failed,pending',
         ]);
 
-        $apiKey = ApiKey::where('public_key', $validated['public_key'])
-            ->where('status', 'active')
-            ->first();
-
-        if (!$apiKey) {
+        if (empty($validated['public_key']) && empty($validated['access_code'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid or inactive public key',
+                'message' => 'public_key or access_code is required',
             ], 401);
         }
 
-        return DB::transaction(function () use ($validated, $apiKey) {
-            $transaction = Transaction::where('reference', $validated['reference'])
-                ->where('business_id', $apiKey->business_id)
-                ->lockForUpdate()
+        $apiKey = null;
+        $businessId = null;
+
+        if (!empty($validated['public_key'])) {
+            $apiKey = ApiKey::where('public_key', $validated['public_key'])
+                ->where('status', 'active')
                 ->first();
+
+            if (!$apiKey) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid or inactive public key',
+                ], 401);
+            }
+
+            $businessId = $apiKey->business_id;
+        }
+
+        return DB::transaction(function () use ($validated, $apiKey, $businessId) {
+            $query = Transaction::where('reference', $validated['reference'])->lockForUpdate();
+
+            if (!empty($validated['access_code'])) {
+                $query->where('access_code', $validated['access_code']);
+            }
+
+            if ($businessId) {
+                $query->where('business_id', $businessId);
+            }
+
+            $transaction = $query->first();
 
             if (!$transaction) {
                 return response()->json([
@@ -227,6 +252,8 @@ class InlineController extends Controller
                     'message' => 'Transaction not found',
                 ], 404);
             }
+
+            $apiKey = $apiKey ?: $transaction->apiKey;
 
             if ($transaction->status !== 'pending') {
                 return response()->json([
@@ -240,6 +267,10 @@ class InlineController extends Controller
                     'status' => 'failed',
                     'gateway_response' => 'Transaction expired',
                 ]);
+
+                if ($apiKey) {
+                    $this->dispatchWebhook($apiKey, 'charge.failed', $this->webhookPayload($transaction));
+                }
 
                 return response()->json([
                     'success' => false,
@@ -256,12 +287,16 @@ class InlineController extends Controller
                     'gateway_response' => 'Simulated pending (test mode)',
                 ]);
 
+                if ($apiKey) {
+                    $this->dispatchWebhook($apiKey, 'charge.pending', $this->webhookPayload($transaction));
+                }
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Payment pending',
                     'data' => [
                         'reference' => $transaction->reference,
-                        'amount' => $transaction->amount,
+                        'amount' => $transaction->amount / 100,
                         'status' => 'pending',
                     ],
                 ], 200);
@@ -273,6 +308,10 @@ class InlineController extends Controller
                     'channel' => $channel,
                     'gateway_response' => 'Simulated failure (test mode)',
                 ]);
+
+                if ($apiKey) {
+                    $this->dispatchWebhook($apiKey, 'charge.failed', $this->webhookPayload($transaction));
+                }
 
                 return response()->json([
                     'success' => false,
@@ -298,6 +337,10 @@ class InlineController extends Controller
                         'channel' => 'card',
                         'gateway_response' => $cardResult['message'] ?? 'Card declined',
                     ]);
+
+                    if ($apiKey) {
+                        $this->dispatchWebhook($apiKey, 'charge.failed', $this->webhookPayload($transaction));
+                    }
 
                     return response()->json([
                         'success' => false,
@@ -345,12 +388,16 @@ class InlineController extends Controller
                 SendCustomerReceipt::dispatch($transaction);
             }
 
+            if ($apiKey) {
+                $this->dispatchWebhook($apiKey, 'charge.success', $this->webhookPayload($transaction));
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Payment successful',
                 'data' => [
                     'reference' => $transaction->reference,
-                    'amount' => $transaction->amount,
+                    'amount' => $transaction->amount / 100,
                     'status' => $transaction->status,
                 ],
             ], 200);
@@ -359,7 +406,71 @@ class InlineController extends Controller
 
     public function verify(Request $request, string $reference)
     {
-        $transaction = Transaction::where('reference', $reference)->first();
+        $authHeader = $request->header('Authorization');
+
+        if (!$authHeader || !str_starts_with($authHeader, 'Bearer ')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Authorization header missing or malformed',
+            ], 401);
+        }
+
+        $apiKeyValue = trim(substr($authHeader, 7));
+
+        if (empty($apiKeyValue)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Secret key is required',
+            ], 401);
+        }
+
+        if (!str_starts_with($apiKeyValue, 'sk_live_')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid secret key format',
+            ], 401);
+        }
+
+        $keyId = substr($apiKeyValue, 8, 6);
+        $secretKey = substr($apiKeyValue, 14);
+
+        if (strlen($keyId) !== 6 || empty($secretKey)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid secret key format',
+            ], 401);
+        }
+
+        $apiKey = ApiKey::where('key_id', $keyId)
+            ->where('status', 'active')
+            ->first();
+
+        if (!$apiKey) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid secret key',
+            ], 401);
+        }
+
+        try {
+            $storedSecret = Crypt::decryptString($apiKey->secret_key);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid secret key',
+            ], 401);
+        }
+
+        if (!hash_equals($storedSecret, $apiKeyValue)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid secret key',
+            ], 401);
+        }
+
+        $transaction = Transaction::where('reference', $reference)
+            ->where('business_id', $apiKey->business_id)
+            ->first();
 
         if (!$transaction) {
             return response()->json([
@@ -373,13 +484,46 @@ class InlineController extends Controller
             'message' => 'Transaction retrieved',
             'data' => [
                 'reference' => $transaction->reference,
-                'amount' => $transaction->amount,
+                'amount' => $transaction->amount / 100,
                 'status' => $transaction->status,
                 'channel' => $transaction->channel,
                 'gateway_response' => $transaction->gateway_response,
                 'paid_at' => $transaction->paid_at,
             ],
         ], 200);
+    }
+
+    private function dispatchWebhook(ApiKey $apiKey, string $event, array $payload): void
+    {
+        if (empty($apiKey->webhook_url)) {
+            return;
+        }
+
+        $webhook = Webhook::create([
+            'business_id' => $apiKey->business_id,
+            'url' => $apiKey->webhook_url,
+            'secret' => $apiKey->secret_key,
+            'events' => [$event],
+            'status' => 'pending',
+        ]);
+
+        SendWebhook::dispatch($webhook->id, $event, $payload);
+    }
+
+    private function webhookPayload(Transaction $transaction): array
+    {
+        return [
+            'reference' => $transaction->reference,
+            'sub_amount' => $transaction->sub_amount / 100,
+            'fee' => $transaction->fee / 100,
+            'amount' => $transaction->amount / 100,
+            'net_amount' => $transaction->net_amount / 100,
+            'status' => $transaction->status,
+            'channel' => $transaction->channel,
+            'gateway_response' => $transaction->gateway_response,
+            'paid_at' => $transaction->paid_at,
+            'customer_email' => $transaction->customer?->email,
+        ];
     }
 
     private function detectCardBrand(string $cardNumber): string

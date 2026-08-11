@@ -1,0 +1,650 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap");
+
+:root {
+    --wx-brand: #1f5c43;
+    --wx-brand-dark: #163f2f;
+    --wx-brand-light: #2a7457;
+
+    --wx-tint-50: #f3f8f5;
+    --wx-tint-100: #e5f0ea;
+    --wx-tint-200: #c9e0d3;
+
+    --wx-ink-900: #121815;
+    --wx-ink-700: #3d443f;
+    --wx-ink-500: #6b746e;
+    --wx-ink-400: #8b948d;
+    --wx-ink-200: #dde3df;
+    --wx-ink-100: #eef1ef;
+
+    --wx-surface: #ffffff;
+    --wx-danger: #b3432f;
+    --wx-danger-tint: #fbeeeb;
+
+    --wx-success: #1f9254;
+    --wx-success-tint: #e8f6ee;
+    --wx-warning: #b5790a;
+    --wx-warning-tint: #fdf3e2;
+
+    --wx-font-sans:
+        "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        sans-serif;
+    --wx-font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+    --wx-radius-sm: 6px;
+    --wx-radius-md: 10px;
+    --wx-radius-lg: 20px;
+
+    --wx-shadow:
+        0 24px 64px -12px rgba(18, 24, 21, 0.35),
+        0 0 0 1px rgba(18, 24, 21, 0.04);
+    --wx-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+    box-sizing: border-box;
+}
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+.wx-page {
+    min-height: 100vh;
+    width: 100%;
+    background: var(--wx-tint-50);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--wx-font-sans);
+    -webkit-font-smoothing: antialiased;
+    padding: 40px 16px;
+}
+
+.wx-modal {
+    background: var(--wx-surface);
+    width: 640px;
+    max-width: 94vw;
+    max-height: 88vh;
+    border-radius: var(--wx-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--wx-shadow);
+    display: flex;
+    position: relative;
+    animation: wx-rise 0.22s var(--wx-ease);
+}
+
+@keyframes wx-rise {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.wx-grabber {
+    display: none;
+}
+
+.wx-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: var(--wx-radius-sm);
+    color: var(--wx-ink-400);
+    cursor: pointer;
+    z-index: 2;
+    transition:
+        background 0.12s ease,
+        color 0.12s ease;
+}
+.wx-close:hover {
+    background: var(--wx-ink-100);
+    color: var(--wx-brand);
+}
+.wx-close svg {
+    width: 16px;
+    height: 16px;
+}
+
+.wx-sidebar {
+    width: 184px;
+    background: var(--wx-tint-50);
+    border-right: 0.5px solid var(--wx-ink-200);
+    padding: 24px 0;
+    flex-shrink: 0;
+}
+
+.wx-sidebar-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    color: var(--wx-ink-400);
+    padding: 0 22px 12px;
+}
+
+.wx-method {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 22px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--wx-ink-700);
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition:
+        background 0.12s ease,
+        color 0.12s ease;
+}
+.wx-method:hover {
+    background: var(--wx-tint-100);
+}
+.wx-method.active {
+    color: var(--wx-brand);
+    background: var(--wx-tint-100);
+    border-left-color: var(--wx-brand);
+    font-weight: 600;
+}
+.wx-method svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.wx-content {
+    flex: 1;
+    padding: 24px 26px 22px;
+    min-width: 0;
+    overflow-y: auto;
+}
+
+.wx-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 22px;
+    padding-right: 30px;
+}
+
+.wx-brandmark-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.wx-brandmark {
+    width: 48px;
+    height: 48px;
+    border-radius: 7px;
+}
+.wx-topbar-right {
+    text-align: right;
+}
+.wx-email {
+    font-size: 12.5px;
+    color: var(--wx-ink-500);
+    margin: 0 0 3px;
+}
+.wx-pay-line {
+    font-size: 13px;
+    color: var(--wx-ink-900);
+    margin: 0;
+}
+.wx-pay-line strong {
+    font-family: var(--wx-font-mono);
+    font-weight: 600;
+    color: var(--wx-brand);
+}
+
+.wx-panel-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--wx-ink-900);
+    margin: 0 0 18px;
+}
+
+.wx-field {
+    margin-bottom: 14px;
+}
+.wx-field label {
+    display: block;
+    font-size: 12px;
+    color: var(--wx-ink-500);
+    margin-bottom: 6px;
+}
+.wx-input-wrap {
+    position: relative;
+}
+.wx-field input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--wx-ink-200);
+    border-radius: var(--wx-radius-sm);
+    font-size: 14px;
+    font-family: var(--wx-font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--wx-ink-900);
+    box-sizing: border-box;
+    outline: none;
+    background: var(--wx-surface);
+    transition:
+        border-color 0.12s ease,
+        box-shadow 0.12s ease;
+}
+.wx-field input::placeholder {
+    color: var(--wx-ink-400);
+    font-family: var(--wx-font-mono);
+}
+.wx-input-wrap input {
+    padding-right: 46px;
+}
+.wx-field input:focus,
+.wx-field input:focus-visible {
+    border-color: var(--wx-brand);
+    box-shadow: 0 0 0 3px var(--wx-tint-200);
+}
+
+.wx-card-brand {
+    position: absolute;
+    right: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--wx-font-sans);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--wx-ink-400);
+    pointer-events: none;
+}
+
+.wx-row {
+    display: flex;
+    gap: 12px;
+}
+.wx-row .wx-field {
+    flex: 1;
+}
+
+.wx-error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--wx-danger);
+    background: var(--wx-danger-tint);
+    border-radius: var(--wx-radius-sm);
+    font-size: 12.5px;
+    padding: 0;
+    margin: 0;
+    min-height: 0;
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition:
+        max-height 0.15s ease,
+        opacity 0.15s ease,
+        margin 0.15s ease,
+        padding 0.15s ease;
+}
+.wx-error.wx-error-visible {
+    padding: 9px 11px;
+    margin: -4px 0 12px;
+    max-height: 60px;
+    opacity: 1;
+}
+.wx-error svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.wx-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 13px;
+    background: var(--wx-brand);
+    color: #fff;
+    border: none;
+    border-radius: var(--wx-radius-sm);
+    font-family: var(--wx-font-sans);
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background 0.12s ease,
+        transform 0.08s ease;
+}
+.wx-btn:hover:not(:disabled) {
+    background: var(--wx-brand-dark);
+}
+.wx-btn:active:not(:disabled) {
+    transform: scale(0.99);
+}
+.wx-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+.wx-btn .wx-amount {
+    font-family: var(--wx-font-mono);
+}
+
+.wx-btn-ghost {
+    background: var(--wx-tint-50);
+    color: var(--wx-ink-700);
+    border: 1px solid var(--wx-tint-200);
+}
+.wx-btn-ghost:hover:not(:disabled) {
+    background: var(--wx-ink-100);
+}
+
+.wx-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: wx-spin 0.7s linear infinite;
+}
+.wx-btn-ghost .wx-spinner {
+    border-color: rgba(31, 92, 67, 0.25);
+    border-top-color: var(--wx-brand);
+}
+@keyframes wx-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.wx-transfer-note {
+    font-size: 12.5px;
+    color: var(--wx-ink-500);
+    margin: 0 0 8px;
+    line-height: 1.55;
+}
+
+.wx-timer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--wx-brand);
+    margin: 0 0 20px;
+}
+.wx-timer svg {
+    width: 14px;
+    height: 14px;
+}
+.wx-timer span {
+    font-family: var(--wx-font-mono);
+}
+.wx-timer.wx-timer-expired {
+    color: var(--wx-danger);
+}
+
+.wx-result {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 40px 20px 24px;
+    animation: wx-panel-in 0.2s ease-out;
+}
+
+.wx-result-icon {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    animation: wx-icon-pop 0.36s var(--wx-ease);
+}
+.wx-result-icon svg {
+    width: 34px;
+    height: 34px;
+}
+.wx-icon-success {
+    background: var(--wx-success-tint);
+    color: var(--wx-success);
+}
+.wx-icon-failed {
+    background: var(--wx-danger-tint);
+    color: var(--wx-danger);
+}
+.wx-icon-pending {
+    background: var(--wx-warning-tint);
+    color: var(--wx-warning);
+}
+
+@keyframes wx-icon-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.wx-result-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--wx-ink-900);
+    margin: 0 0 6px;
+}
+.wx-result-subtitle {
+    font-size: 13.5px;
+    color: var(--wx-ink-500);
+    line-height: 1.5;
+    margin: 0 0 4px;
+    max-width: 320px;
+}
+.wx-result-amount {
+    font-family: var(--wx-font-mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--wx-ink-900);
+    margin: 10px 0 2px;
+}
+.wx-result-ref {
+    font-family: var(--wx-font-mono);
+    font-size: 11.5px;
+    color: var(--wx-ink-400);
+    margin: 0 0 24px;
+}
+.wx-result-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-width: 280px;
+}
+
+.wx-secure {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--wx-ink-400);
+    padding: 16px 0 2px;
+}
+.wx-secure svg {
+    width: 13px;
+    height: 13px;
+}
+.wx-secure strong {
+    color: var(--wx-ink-500);
+    font-weight: 600;
+}
+
+.wx-panel {
+    animation: wx-panel-in 0.16s ease-out;
+}
+@keyframes wx-panel-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.wx-error-card {
+    background: var(--wx-surface);
+    width: 420px;
+    max-width: 94vw;
+    border-radius: var(--wx-radius-lg);
+    box-shadow: var(--wx-shadow);
+    padding: 44px 30px 34px;
+    text-align: center;
+    animation: wx-rise 0.22s var(--wx-ease);
+}
+.wx-error-card-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 18px;
+    border-radius: 50%;
+    background: var(--wx-danger-tint);
+    color: var(--wx-danger);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.wx-error-card-icon svg {
+    width: 30px;
+    height: 30px;
+}
+.wx-error-card-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--wx-ink-900);
+    margin: 0 0 8px;
+}
+.wx-error-card-message {
+    font-size: 13.5px;
+    color: var(--wx-ink-500);
+    line-height: 1.55;
+    margin: 0;
+}
+
+@media (max-width: 560px) {
+    .wx-page {
+        padding: 0;
+        align-items: flex-end;
+    }
+
+    .wx-modal {
+        width: 100%;
+        max-width: 100%;
+        max-height: 94vh;
+        border-radius: var(--wx-radius-lg) var(--wx-radius-lg) 0 0;
+        flex-direction: column;
+        animation: wx-slide-up 0.24s var(--wx-ease);
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    @keyframes wx-slide-up {
+        from {
+            transform: translateY(100%);
+        }
+        to {
+            transform: translateY(0);
+        }
+    }
+
+    .wx-grabber {
+        display: block;
+        width: 36px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--wx-ink-200);
+        margin: 10px auto 0;
+    }
+
+    .wx-close {
+        top: 14px;
+        right: 14px;
+    }
+
+    .wx-sidebar {
+        width: 100%;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        border-right: none;
+        border-bottom: 0.5px solid var(--wx-ink-200);
+        padding: 14px 16px 12px;
+    }
+    .wx-sidebar-label {
+        display: none;
+    }
+    .wx-method {
+        flex: 1;
+        justify-content: center;
+        border-left: none;
+        border-bottom: 2px solid transparent;
+        border-radius: var(--wx-radius-sm);
+        padding: 10px 8px;
+    }
+    .wx-method.active {
+        border-left-color: transparent;
+        border-bottom-color: var(--wx-brand);
+    }
+
+    .wx-content {
+        padding: 18px 18px 16px;
+    }
+
+    .wx-topbar {
+        flex-direction: column;
+        gap: 10px;
+        padding-right: 0;
+    }
+    .wx-topbar-right {
+        text-align: left;
+    }
+
+    .wx-row {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .wx-error-card {
+        width: 100%;
+        border-radius: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wx-modal,
+    .wx-error-card,
+    .wx-panel,
+    .wx-spinner,
+    .wx-result,
+    .wx-result-icon {
+        animation: none !important;
+    }
+}

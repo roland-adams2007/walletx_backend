@@ -11,6 +11,7 @@ class ApiKey extends Model
     use HasFactory;
 
     protected $fillable = [
+        'key_id',
         'business_id',
         'environment',
         'public_key',

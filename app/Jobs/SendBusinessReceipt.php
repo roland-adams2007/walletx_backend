@@ -23,7 +23,7 @@ class SendBusinessReceipt implements ShouldQueue
     public function __construct(
         public Transaction $transaction,
     ) {
-        $this->onQueue('emails');
+        $this->onQueue('bulk');
     }
 
     public function handle(): void

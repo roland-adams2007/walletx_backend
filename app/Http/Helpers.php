@@ -69,14 +69,16 @@ if (!function_exists('static_asset')) {
 if (!function_exists('getBaseURL')) {
     function getBaseURL()
     {
-        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')
+            ? 'https'
+            : 'http';
 
         $host = $_SERVER['HTTP_HOST'];
         $scriptDir = dirname($_SERVER['SCRIPT_NAME']);
-        $base = str_replace('/public', '', $scriptDir);
-        $base = rtrim($base, '/') . '/';
 
-        return $scheme . '://' . $host . $base;
+        $base = str_replace('/public', '', $scriptDir);
+
+        return $scheme . '://' . $host . rtrim($base, '/');
     }
 }
 

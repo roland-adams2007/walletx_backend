@@ -259,7 +259,9 @@ class BusinessController extends Controller
             'alt_id' => 'required|string',
         ]);
 
-        $business = $user->businesses()->where('alt_id', $validated['alt_id'])->first();
+        $business = $user->businesses()
+            ->where('alt_id', $validated['alt_id'])
+            ->first();
 
         if (!$business) {
             return response()->json([
@@ -268,7 +270,8 @@ class BusinessController extends Controller
             ], 404);
         }
 
-        $rawSecret = 'sk_live_' . Str::random(32);
+        $keyId = strtolower(Str::random(6));
+        $rawSecret = 'sk_live_' . $keyId . strtolower(Str::random(32));
 
         $apiKey = $business->apiKeys()
             ->where('environment', 'live')
@@ -276,20 +279,26 @@ class BusinessController extends Controller
             ->first();
 
         if ($apiKey) {
+            $keyId = strtolower($apiKey->key_id);
+            $rawSecret = 'sk_live_' . $keyId . strtolower(Str::random(32));
+
             $apiKey->update([
                 'secret_key' => Crypt::encryptString($rawSecret),
             ]);
+
             $message = 'Secret key rotated successfully.';
         } else {
             $apiKey = $business->apiKeys()->create([
+                'key_id' => $keyId,
                 'environment' => 'live',
-                'public_key' => 'pk_live_' . Str::random(24),
+                'public_key' => 'pk_live_' . strtolower(Str::random(24)),
                 'secret_key' => Crypt::encryptString($rawSecret),
                 'status' => 'active',
             ]);
 
             $message = 'Live API key generated successfully.';
         }
+
         return response()->json([
             'success' => true,
             'message' => $message,
@@ -300,6 +309,7 @@ class BusinessController extends Controller
             ],
         ], 200);
     }
+
     public function getApiKeys(Request $request)
     {
         $user = auth()->user();
@@ -308,7 +318,9 @@ class BusinessController extends Controller
             'alt_id' => 'required|string',
         ]);
 
-        $business = $user->businesses()->where('alt_id', $validated['alt_id'])->first();
+        $business = $user->businesses()
+            ->where('alt_id', $validated['alt_id'])
+            ->first();
 
         if (!$business) {
             return response()->json([
@@ -323,11 +335,13 @@ class BusinessController extends Controller
             ->first();
 
         if (!$apiKey) {
-            $rawSecret = 'sk_live_' . Str::random(32);
+            $keyId = strtolower(Str::random(6));
+            $rawSecret = 'sk_live_' . $keyId . strtolower(Str::random(32));
 
             $apiKey = $business->apiKeys()->create([
+                'key_id' => $keyId,
                 'environment' => 'live',
-                'public_key' => 'pk_live_' . Str::random(24),
+                'public_key' => 'pk_live_' . strtolower(Str::random(24)),
                 'secret_key' => Crypt::encryptString($rawSecret),
                 'status' => 'active',
             ]);
@@ -357,6 +371,7 @@ class BusinessController extends Controller
             ],
         ], 200);
     }
+
     public function deactivateBusiness(Request $request)
     {
         $user = auth()->user();
@@ -364,20 +379,29 @@ class BusinessController extends Controller
         $validated = $request->validate([
             'alt_id' => 'required|string',
         ]);
-        $business = $user->businesses()->where('alt_id', $validated['alt_id'])->first();
+
+        $business = $user->businesses()
+            ->where('alt_id', $validated['alt_id'])
+            ->first();
+
         if (!$business) {
             return response()->json([
                 'success' => false,
                 'message' => 'Business not found',
             ], 404);
         }
+
         if (!$business->is_active) {
             return response()->json([
                 'success' => false,
                 'message' => 'Business is already deactivated',
             ], 422);
         }
-        $business->update(['is_active' => false]);
+
+        $business->update([
+            'is_active' => false,
+        ]);
+
         return response()->json([
             'success' => true,
             'message' => 'Business deactivated successfully',
