@@ -6,6 +6,7 @@ use App\Http\Controllers\BankController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PayoutController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\UploadController;
@@ -23,7 +24,6 @@ Route::post('/auth/resend-verification', [AuthController::class, 'resendVerifica
     ->middleware('throttle:resend_verification');
 Route::post('/auth/refresh', [AuthController::class, 'refresh'])
     ->middleware('throttle:refresh');
-Route::post('/auth/logout', [AuthController::class, 'logout']);
 Route::post('/transaction/initialize/inline', [InlineController::class, 'initialise'])->middleware('throttle:api');
 Route::post('/payments/charge', [InlineController::class, 'charge'])->middleware('throttle:api');
 Route::get('/payments/verify/{reference}', [InlineController::class, 'verify'])->middleware('throttle:api');
@@ -33,6 +33,7 @@ Route::middleware([
     'account.verified',
     'account.active'
 ])->group(function () {
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/user', [UserController::class, 'user']);
     Route::patch('/user/profile', [UserController::class, 'updateProfile']);
     Route::put('/user/password', [UserController::class, 'updatePassword']);
@@ -56,6 +57,8 @@ Route::middleware([
     Route::patch('/customers/{cus_id}/blacklist', [CustomerController::class, 'updateBlacklist']);
     Route::get('/transactions', [TransactionController::class, 'index']);
     Route::get('/transactions/{reference}', [TransactionController::class, 'show']);
+    Route::get('/payouts', [PayoutController::class, 'index']);
+    Route::get('/payouts/{reference}', [PayoutController::class, 'show']);
     Route::post('/uploads', [UploadController::class, 'store']);
     Route::get('/banks', [BankController::class, 'fetchAll']);
     Route::post('/bank/verify', [BankController::class, 'verifyBankAccount']);
