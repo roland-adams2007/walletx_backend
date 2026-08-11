@@ -1,46 +1,38 @@
 <?php
 
-namespace App\Http\Controllers\api;
+namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
-use App\Jobs\SendBusinessReceipt;
-use App\Jobs\SendCustomerReceipt;
-use App\Models\ApiKey;
 use App\Models\Business;
 use App\Models\Customer;
-use App\Models\Payout;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-class InlineController extends Controller
+class WalletController extends Controller
 {
-    public function initialise(Request $request)
+    private function resolveBusiness(Request $request): ?Business
+    {
+        $user = $request->user();
+        $businessId = $request->input('business_id');
+
+        if ($businessId) {
+            return $user->businesses()->where('alt_id', $businessId)->first();
+        }
+        return $user->businesses()->first();
+    }
+
+
+    public function initialize(Request $request)
     {
         $validated = $request->validate([
-            'key' => 'required|string',
-            'email' => 'required|email',
             'amount' => 'required|integer|min:100',
-            'firstname' => 'required|string|max:255',
-            'lastname' => 'required|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'ref' => 'required|string|max:100',
-            'meta' => 'nullable|array',
+            'ref' => 'nullable|string|max:100',
+            'business_id' => 'nullable|integer',
         ]);
 
-        $apiKey = ApiKey::where('public_key', $validated['key'])
-            ->where('status', 'active')
-            ->first();
+        $business = $this->resolveBusiness($request);
 
-        if (!$apiKey) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid or inactive public key',
-            ], 401);
-        }
-
-        $business = $apiKey->business;
         if (!$business || !$business->is_active) {
             return response()->json([
                 'success' => false,
@@ -48,26 +40,10 @@ class InlineController extends Controller
             ], 403);
         }
 
-        return DB::transaction(function () use ($validated, $apiKey, $business, $request) {
+        $reference = $validated['ref'] ?? ('wallet_' . Str::random(16));
 
-            $customerExist = Customer::where('email', $validated['email'])
-                ->where('business_id', $business->id)
-                ->first();
-
-            if (!$customerExist) {
-                $customer = Customer::create([
-                    'business_id' => $business->id,
-                    'cus_id' => 'cus_' . Str::random(12),
-                    'email' => $validated['email'],
-                    'firstname' => null,
-                    'lastname' => null,
-                    'phone' => null,
-                ]);
-            } else {
-                $customer = $customerExist;
-            }
-
-            $existing = Transaction::where('reference', $validated['ref'])
+        return DB::transaction(function () use ($validated, $business, $reference, $request) {
+            $existing = Transaction::where('reference', $reference)
                 ->lockForUpdate()
                 ->first();
 
@@ -87,9 +63,7 @@ class InlineController extends Controller
                 }
 
                 if ($existing->isExpired()) {
-                    $existing->update([
-                        'expires_at' => now()->addMinutes(30),
-                    ]);
+                    $existing->update(['expires_at' => now()->addMinutes(30)]);
                 }
 
                 return response()->json([
@@ -97,11 +71,7 @@ class InlineController extends Controller
                     'message' => 'Transaction already initialised',
                     'data' => [
                         'reference' => $existing->reference,
-                        'sub_amount' => $existing->sub_amount,
-                        'fee' => $existing->fee,
                         'amount' => $existing->amount,
-                        'net_amount' => $existing->net_amount,
-                        'status' => $existing->status,
                         'access_code' => $existing->access_code,
                         'expires_at' => $existing->expires_at?->toIso8601String(),
                         'merchant' => [
@@ -113,58 +83,30 @@ class InlineController extends Controller
             }
 
             $businessRow = Business::where('id', $business->id)->lockForUpdate()->first();
-
-            $subAmount = $validated['amount'];
-
-            if ($businessRow->max_balance > 0 && $subAmount > $businessRow->max_balance) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Amount exceeds the maximum transaction limit allowed for this business',
-                ], 422);
-            }
-
-            $preference = $businessRow->preference;
-            $chargeFeeToCustomer = $preference ? $preference->isFeeChargedToCustomer() : false;
-
-            $feePercent = (float) get_setting('transaction_fee_percent', 0);
-            $feeMaxCap = (int) get_setting('transaction_fee_max_cap', 0);
-
-            $fee = (int) round($subAmount * $feePercent / 100);
-
-            if ($feeMaxCap > 0 && $fee > $feeMaxCap) {
-                $fee = $feeMaxCap;
-            }
-
-            if ($chargeFeeToCustomer) {
-                $amountToCharge = $subAmount + $fee;
-                $netAmount = $subAmount;
-            } else {
-                $amountToCharge = $subAmount;
-                $netAmount = $subAmount - $fee;
-            }
+            $amount = $validated['amount'];
+            $selfCustomer = Customer::firstOrCreate(
+                ['business_id' => $businessRow->id, 'email' => $request->user()->email],
+                ['cus_id' => 'cus_' . Str::random(12), 'firstname' => null, 'lastname' => null, 'phone' => null]
+            );
 
             $transaction = $businessRow->transactions()->create([
-                'reference' => $validated['ref'],
+                'reference' => $reference,
                 'access_code' => Str::random(20),
-                'customer_id' => $customer->id,
+                'customer_id' => $selfCustomer->id,
                 'type' => 'credit',
                 'channel' => 'card',
-                'sub_amount' => $subAmount,
-                'amount' => $amountToCharge,
-                'fee' => $fee,
-                'net_amount' => $netAmount,
+                'sub_amount' => $amount,
+                'amount' => $amount,
+                'fee' => 0,
+                'net_amount' => $amount,
                 'balance_before' => $businessRow->balance,
                 'balance_after' => $businessRow->balance,
                 'status' => 'pending',
-                'meta' => array_merge($validated['meta'] ?? [], [
-                    'email' => $validated['email'],
-                    'firstname' => $validated['firstname'],
-                    'lastname' => $validated['lastname'],
-                    'phone' => $validated['phone'] ?? null,
-                    'charge_fee_to_customer' => $chargeFeeToCustomer,
-                ]),
-                'api_key_id' => $apiKey->id,
-                'source' => 'api',
+                'meta' => [
+                    'email' => $request->user()->email,
+                ],
+                'api_key_id' => null, 
+                'source' => 'dashboard',
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
                 'expires_at' => now()->addMinutes(30),
@@ -175,11 +117,7 @@ class InlineController extends Controller
                 'message' => 'Transaction initialised',
                 'data' => [
                     'reference' => $transaction->reference,
-                    'sub_amount' => $transaction->sub_amount,
-                    'fee' => $transaction->fee,
                     'amount' => $transaction->amount,
-                    'net_amount' => $transaction->net_amount,
-                    'charge_fee_to_customer' => $chargeFeeToCustomer,
                     'access_code' => $transaction->access_code,
                     'expires_at' => $transaction->expires_at,
                     'merchant' => [
@@ -194,7 +132,6 @@ class InlineController extends Controller
     public function charge(Request $request)
     {
         $validated = $request->validate([
-            'public_key' => 'required|string',
             'reference' => 'required|string',
             'channel' => 'required|in:card,bank_transfer',
             'card_number' => 'required_if:channel,card|string',
@@ -204,20 +141,18 @@ class InlineController extends Controller
             'simulate' => 'nullable|in:success,failed,pending',
         ]);
 
-        $apiKey = ApiKey::where('public_key', $validated['public_key'])
-            ->where('status', 'active')
-            ->first();
+        $businessIds = $request->user()->businesses()->pluck('id');
 
-        if (!$apiKey) {
+        if ($businessIds->isEmpty()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid or inactive public key',
-            ], 401);
+                'message' => 'Business not found',
+            ], 403);
         }
 
-        return DB::transaction(function () use ($validated, $apiKey) {
+        return DB::transaction(function () use ($validated, $businessIds) {
             $transaction = Transaction::where('reference', $validated['reference'])
-                ->where('business_id', $apiKey->business_id)
+                ->whereIn('business_id', $businessIds)
                 ->lockForUpdate()
                 ->first();
 
@@ -283,48 +218,15 @@ class InlineController extends Controller
             $authorization = null;
 
             if ($channel === 'card') {
-                if ($simulate === 'success') {
-                    $cardResult = [
-                        'success' => true,
-                        'brand' => $this->detectCardBrand($validated['card_number']),
-                    ];
-                } else {
-                    $cardResult = $this->processCard($validated);
-                }
-
-                if (!$cardResult['success']) {
-                    $transaction->update([
-                        'status' => 'failed',
-                        'channel' => 'card',
-                        'gateway_response' => $cardResult['message'] ?? 'Card declined',
-                    ]);
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => $cardResult['message'] ?? 'Card declined',
-                    ], 422);
-                }
-
                 $authorization = [
                     'last4' => substr($validated['card_number'], -4),
-                    'brand' => $cardResult['brand'],
+                    'brand' => 'VISA',
                     'exp_month' => $validated['expiry_month'],
                     'exp_year' => $validated['expiry_year'],
                 ];
-            } else {
-                if ($simulate !== 'success') {
-                    $transferReceived = $this->checkBankTransfer($transaction);
-
-                    if (!$transferReceived) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Transfer not yet confirmed. Please wait a moment and try again.',
-                        ], 422);
-                    }
-                }
             }
 
-            $business = Business::where('id', $transaction->business_id)->lockForUpdate()->first();
+            $businessRow = Business::where('id', $transaction->business_id)->lockForUpdate()->first();
 
             $transaction->update([
                 'status' => 'success',
@@ -333,21 +235,11 @@ class InlineController extends Controller
                 'authorization' => $authorization,
                 'paid_at' => now(),
             ]);
-
-            $business->increment('pending_balance', $transaction->net_amount);
-            $preference = $business->preference;
-
-            if ($preference && $preference->isReceiptSentToBusiness()) {
-                SendBusinessReceipt::dispatch($transaction);
-            }
-
-            if ($preference && $preference->isReceiptSentToCustomer()) {
-                SendCustomerReceipt::dispatch($transaction);
-            }
+            $businessRow->increment('balance', $transaction->net_amount);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Payment successful',
+                'message' => 'Wallet funded',
                 'data' => [
                     'reference' => $transaction->reference,
                     'amount' => $transaction->amount,
@@ -359,7 +251,11 @@ class InlineController extends Controller
 
     public function verify(Request $request, string $reference)
     {
-        $transaction = Transaction::where('reference', $reference)->first();
+        $businessIds = $request->user()->businesses()->pluck('id');
+
+        $transaction = Transaction::where('reference', $reference)
+            ->whereIn('business_id', $businessIds)
+            ->first();
 
         if (!$transaction) {
             return response()->json([
@@ -380,29 +276,5 @@ class InlineController extends Controller
                 'paid_at' => $transaction->paid_at,
             ],
         ], 200);
-    }
-
-    private function detectCardBrand(string $cardNumber): string
-    {
-        $digits = preg_replace('/\D/', '', $cardNumber);
-
-        if (preg_match('/^4/', $digits)) return 'VISA';
-        if (preg_match('/^5[1-5]/', $digits) || preg_match('/^2(2[2-9]|[3-6]\d|7[01])/', $digits)) return 'MASTERCARD';
-        if (preg_match('/^506(0|1)|^5078/', $digits)) return 'VERVE';
-
-        return 'UNKNOWN';
-    }
-
-    private function processCard(array $card): array
-    {
-        return [
-            'success' => true,
-            'brand' => 'VISA',
-        ];
-    }
-
-    private function checkBankTransfer(Transaction $transaction): bool
-    {
-        return false;
     }
 }

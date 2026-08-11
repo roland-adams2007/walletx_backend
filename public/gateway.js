@@ -13,10 +13,6 @@
         link.href = resolveCssPath();
         document.head.appendChild(link);
     }
-
-    // Both the stylesheet and the API base URL live wherever gateway.js
-    // itself was loaded from — the <script src="..."> tag already tells us
-    // that, so callers never need to pass a baseUrl in.
     function resolveScriptTag() {
         return (
             document.currentScript ||
@@ -71,20 +67,29 @@
                 "WalletXGateway.setup() requires a reference — generate it on your own page and pass it in.",
             );
         }
+        this.internal = !!config.internal;
+
+        if (this.internal) {
+            if (typeof config.onInitialize !== "function" || typeof config.onCharge !== "function") {
+                throw new Error(
+                    "internal mode requires onInitialize(...) and onCharge(...) callbacks.",
+                );
+            }
+            this.onInitialize = config.onInitialize;
+            this.onCharge = config.onCharge;
+        } else if (!config.key) {
+            throw new Error(
+                "WalletXGateway.setup() requires a key — pass { internal: true } instead if this is your own authenticated dashboard.",
+            );
+        }
 
         this.publicKey = config.key;
-        this.email = config.email;
+        this.email = config.email || "";
         this.firstname = config.firstname || "";
         this.lastname = config.lastname || "";
-        // Provisional amount — openModal() calls your server's `initialise`
-        // endpoint and overwrites this with the confirmed amount (and
-        // merchant name/logo) before anything is rendered. The reference
-        // always comes from the caller, never generated in here.
         this.amount = config.amount;
         this.reference = config.reference;
         this.merchant = { name: "Merchant", logo: DEFAULT_LOGO };
-        // Set once initialiseTransaction() resolves; drives the countdown
-        // shown in the modal.
         this.expiresAt = null;
         this.onSuccess = config.callback;
         this.onClose = config.onClose || function () {};
@@ -93,16 +98,16 @@
             function (message) {
                 alert(message);
             };
-        // Resolved from the <script src="..."> tag, not from config —
-        // gateway.js always knows where it was loaded from.
         this.baseUrl = resolveBaseUrl();
     }
-
-    // One round-trip: resolves the business from `key`, creates the pending
-    // transaction for `ref`, and hands back merchant name/logo in the same
-    // response (see InlineController::initialise) — the caller never has
-    // to fetch or pass merchant details itself.
     WalletXGateway.prototype.initialiseTransaction = async function () {
+        if (this.internal) {
+            return await this.onInitialize({
+                reference: this.reference,
+                amount: this.amount,
+            });
+        }
+
         const res = await fetch(
             this.baseUrl + "/api/transaction/initialize/inline",
             {
@@ -128,7 +133,7 @@
             throw new Error(data.message || "Could not start the transaction.");
         }
 
-        return data.data; // { reference, amount, access_code, merchant }
+        return data.data;
     };
 
     WalletXGateway.prototype.openModal = async function () {
@@ -185,7 +190,7 @@
             <img class="wx-brandmark" id="wx-brandmark" src="${merchant.logo}" alt="${merchant.name}" />
           </div>
           <div class="wx-topbar-right">
-            <p class="wx-email">${self.email}</p>
+            ${self.email ? `<p class="wx-email">${self.email}</p>` : ""}
             <p class="wx-pay-line">Pay <strong>${formatAmount(self.amount)}</strong></p>
             <p class="wx-timer" id="wx-timer">${ICONS.clock}<span id="wx-timer-text">Expires in --:--</span></p>
           </div>
@@ -305,9 +310,6 @@
         }
 
         startCountdown();
-
-        // If the business's own logo fails to load (bad S3 url, CORS, etc.)
-        // fall back to the platform logo rather than showing a broken image.
         const brandmark = modal.querySelector("#wx-brandmark");
         brandmark.onerror = function () {
             brandmark.onerror = null;
@@ -355,9 +357,6 @@
             el.innerHTML = ICONS.alert + "<span>" + message + "</span>";
             el.classList.add("wx-error-visible");
         }
-
-        // Card: clicking Pay doesn't charge anything yet, it just reveals
-        // the outcome picker so the tester can choose what happens.
         modal.querySelector("#wx-pay-btn").onclick = function () {
             const card_number = cardInput.value.replace(/\s/g, "");
             const expiry_month = modal.querySelector("#wx-exp-m").value;
@@ -458,11 +457,6 @@
                 };
             }
         }
-
-        // Both card and transfer post to the same /payments/charge endpoint.
-        // `channel` tells the backend which path to run, `simulate` drives
-        // the outcome. Nothing else needs to be resent — the backend
-        // already has amount/email tied to this reference from initialise.
         async function submitOutcome(outcome, channel, buttons) {
             const isCard = channel === "card";
             const errorEl = modal.querySelector(
@@ -476,7 +470,7 @@
 
             const body = isCard
                 ? {
-                      public_key: self.publicKey,
+                      ...(self.internal ? {} : { public_key: self.publicKey }),
                       reference: self.reference,
                       channel: "card",
                       card_number: cardInput.value.replace(/\s/g, ""),
@@ -486,23 +480,25 @@
                       simulate: outcome,
                   }
                 : {
-                      public_key: self.publicKey,
+                      ...(self.internal ? {} : { public_key: self.publicKey }),
                       reference: self.reference,
                       channel: "bank_transfer",
                       simulate: outcome,
                   };
 
             try {
-                const res = await fetch(self.baseUrl + "/api/payments/charge", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Accept: "application/json",
-                    },
-                    body: JSON.stringify(body),
-                });
-
-                const data = await res.json();
+                const data = self.internal
+                    ? await self.onCharge(body)
+                    : await (
+                          await fetch(self.baseUrl + "/api/payments/charge", {
+                              method: "POST",
+                              headers: {
+                                  "Content-Type": "application/json",
+                                  Accept: "application/json",
+                              },
+                              body: JSON.stringify(body),
+                          })
+                      ).json();
 
                 buttons.forEach(function (b) {
                     b.disabled = false;

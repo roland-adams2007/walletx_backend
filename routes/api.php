@@ -11,6 +11,7 @@ use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\UploadController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\WalletController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -66,6 +67,9 @@ Route::middleware([
     Route::post('/transfer/business', [TransferController::class, 'transferToBusiness']);
     Route::get('/dashboard/revenue', [DashboardController::class, 'revenue']);
     Route::get('/dashboard/rate', [DashboardController::class, 'rate']);
+    Route::post('/wallet/fund/initialize', [WalletController::class, 'initialize']);
+    Route::post('/wallet/fund/charge', [WalletController::class, 'charge']);
+    Route::get('/wallet/fund/verify/{reference}', [WalletController::class, 'verify']);
 });
 Route::fallback(fn() => response()->json([
     'data'    => [],

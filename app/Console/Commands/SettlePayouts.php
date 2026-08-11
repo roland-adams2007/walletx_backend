@@ -17,12 +17,10 @@ class SettlePayouts extends Command
 
     public function handle(): int
     {
-        $settlementDate = now()->subDay()->toDateString();
-
         $businessIds = Transaction::where('status', 'success')
             ->where('transaction_type', 'payment')
             ->whereNull('payout_id')
-            ->whereDate('paid_at', $settlementDate)
+            ->where('paid_at', '<', now()->startOfDay())
             ->distinct()
             ->pluck('business_id');
 
@@ -31,51 +29,70 @@ class SettlePayouts extends Command
             return self::SUCCESS;
         }
 
+        $payoutsCreated = 0;
+
         foreach ($businessIds as $businessId) {
-            DB::transaction(function () use ($businessId, $settlementDate) {
-                $business = Business::lockForUpdate()->find($businessId);
+            $settlementDates = Transaction::where('business_id', $businessId)
+                ->where('status', 'success')
+                ->where('transaction_type', 'payment')
+                ->whereNull('payout_id')
+                ->where('paid_at', '<', now()->startOfDay())
+                ->selectRaw('DATE(paid_at) as settlement_date')
+                ->distinct()
+                ->pluck('settlement_date');
 
-                $transactions = Transaction::where('business_id', $businessId)
-                    ->where('status', 'success')
-                    ->where('transaction_type', 'payment')
-                    ->whereNull('payout_id')
-                    ->whereDate('paid_at', $settlementDate)
-                    ->lockForUpdate()
-                    ->get();
+            foreach ($settlementDates as $settlementDate) {
+                DB::transaction(function () use ($businessId, $settlementDate, &$payoutsCreated) {
+                    $business = Business::lockForUpdate()->find($businessId);
 
-                if ($transactions->isEmpty()) {
-                    return;
-                }
+                    if (!$business) {
+                        return;
+                    }
 
-                $totalNet = $transactions->sum('net_amount');
-                $totalFee = $transactions->sum('fee');
+                    $transactions = Transaction::where('business_id', $businessId)
+                        ->where('status', 'success')
+                        ->where('transaction_type', 'payment')
+                        ->whereNull('payout_id')
+                        ->whereDate('paid_at', $settlementDate)
+                        ->lockForUpdate()
+                        ->get();
 
-                if ($totalNet <= 0) {
-                    return;
-                }
+                    if ($transactions->isEmpty()) {
+                        return;
+                    }
 
-                $payout = Payout::create([
-                    'reference' => 'po_' . Str::random(16),
-                    'business_id' => $business->id,
-                    'initiated_by' => null,
-                    'source' => 'automatic',
-                    'amount' => $totalNet,
-                    'fee' => $totalFee,
-                    'bank_code' => $business->settlement_bank_code,
-                    'account_number' => $business->settlement_account_number,
-                    'account_name' => $business->settlement_account_name,
-                    'narration' => 'Settlement for ' . $settlementDate,
-                    'status' => 'pending',
-                ]);
+                    $totalNet = $transactions->sum('net_amount');
+                    $totalFee = $transactions->sum('fee');
 
-                Transaction::whereIn('id', $transactions->pluck('id'))
-                    ->update([
-                        'payout_id' => $payout->id,
+                    if ($totalNet <= 0) {
+                        return;
+                    }
+
+                    $payout = Payout::create([
+                        'reference' => 'po_' . Str::random(16),
+                        'business_id' => $business->id,
+                        'initiated_by' => null,
+                        'source' => 'automatic',
+                        'amount' => $totalNet,
+                        'fee' => $totalFee,
+                        'bank_code' => $business->settlement_bank_code,
+                        'account_number' => $business->settlement_account_number,
+                        'account_name' => $business->settlement_account_name,
+                        'narration' => 'Settlement for ' . $settlementDate,
+                        'status' => 'pending',
                     ]);
-            });
+
+                    Transaction::whereIn('id', $transactions->pluck('id'))
+                        ->update([
+                            'payout_id' => $payout->id,
+                        ]);
+
+                    $payoutsCreated++;
+                });
+            }
         }
 
-        $this->info('Settlement complete for ' . $businessIds->count() . ' business(es).');
+        $this->info("Settlement complete. {$payoutsCreated} payout(s) created.");
 
         return self::SUCCESS;
     }
