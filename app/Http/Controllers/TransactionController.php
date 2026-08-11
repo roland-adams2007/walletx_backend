@@ -18,7 +18,7 @@ class TransactionController extends Controller
             'reference' => 'nullable|string|max:255',
             'customer' => 'nullable|string|max:255',
             'min_amount' => 'nullable|integer|min:0',
-            'max_amount' => 'nullable|integer|min:0|gte:min_amount',
+            'max_amount' => 'nullable|integer|min:0',
             'status' => 'nullable|string|in:success,pending,failed,reversed',
             'channel' => 'nullable|string|max:50',
             'transaction_type' => 'nullable|string|max:50',
@@ -26,6 +26,17 @@ class TransactionController extends Controller
             'start_date' => 'nullable|required_if:date_type,custom|date',
             'end_date' => 'nullable|required_if:date_type,custom|date|after_or_equal:start_date',
         ]);
+
+        if (
+            !empty($validated['min_amount']) &&
+            !empty($validated['max_amount']) &&
+            $validated['max_amount'] < $validated['min_amount']
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'max_amount must be greater than or equal to min_amount',
+            ], 422);
+        }
 
         $business = Business::where('alt_id', $validated['business_id'])->first();
         if (!$business) {
@@ -62,11 +73,11 @@ class TransactionController extends Controller
         }
 
         if (!empty($validated['min_amount'])) {
-            $query->where('transactions.amount', '>=', $validated['min_amount']);
+            $query->where('transactions.amount', '>=', (int) round($validated['min_amount'] * 100));
         }
 
         if (!empty($validated['max_amount'])) {
-            $query->where('transactions.amount', '<=', $validated['max_amount']);
+            $query->where('transactions.amount', '<=', (int) round($validated['max_amount'] * 100));
         }
 
         if (!empty($validated['date_type'])) {
@@ -104,7 +115,6 @@ class TransactionController extends Controller
             if ($item->date) {
                 $item->date = Carbon::parse($item->date)->toIso8601String();
             }
-            // Convert from kobo to naira (divide by 100)
             if (isset($item->amount)) {
                 $item->amount = $item->amount / 100;
             }
