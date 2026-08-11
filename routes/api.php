@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BankController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UploadController;
 use App\Http\Controllers\UserController;
@@ -25,7 +26,6 @@ Route::post('/auth/logout', [AuthController::class, 'logout']);
 Route::post('/transaction/initialize/inline', [InlineController::class, 'initialise'])->middleware('throttle:api');
 Route::post('/payments/charge', [InlineController::class, 'charge'])->middleware('throttle:api');
 Route::get('/payments/verify/{reference}', [InlineController::class, 'verify'])->middleware('throttle:api');
-
 Route::middleware([
     'auth:sanctum',
     'throttle:api',
@@ -57,8 +57,9 @@ Route::middleware([
     Route::post('/uploads', [UploadController::class, 'store']);
     Route::get('/banks', [BankController::class, 'fetchAll']);
     Route::post('/bank/verify', [BankController::class, 'verifyBankAccount']);
+    Route::get('/dashboard/revenue', [DashboardController::class, 'revenue']);
+    Route::get('/dashboard/rate', [DashboardController::class, 'rate']);
 });
-
 Route::fallback(fn() => response()->json([
     'data'    => [],
     'success' => false,
